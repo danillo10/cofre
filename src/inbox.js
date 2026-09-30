@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { understandMessage } from "./ai.js";
 import { categoryLabel, formatBRL } from "./money.js";
 import { parseLaunch } from "./parse.js";
 import { formatSituationMessage } from "./situation.js";
@@ -16,6 +17,7 @@ const HELP = [
   "recebi 5200 de salário",
   "paguei 200 no Nubank",
   "",
+  "Pode escrever naturalmente: a IA entende frases como “ontem gastei quarenta reais no almoço”.",
   "Na foto, eu procuro a linha do total. Se ela falhar, escreve o valor na legenda.",
   "/resumo mostra se a situação está sob controle ou piorando.",
 ].join("\n");
@@ -27,13 +29,17 @@ export function launchText(cofre, text, { replaceDemo = false, note, rawText } =
     return { ok: false, error: "Não achei um valor. Exemplo: 42,90 almoço." };
   }
   if (parsed.error) return { ok: false, error: parsed.error };
+  return launchParsed(cofre, parsed, { replaceDemo, note, rawText: rawText || text });
+}
+
+export function launchParsed(cofre, parsed, { replaceDemo = false, note, rawText = "" } = {}) {
   if (cofre.isDemo()) {
     if (!replaceDemo) {
       return {
         ok: false,
         code: "DEMO",
         error: "O painel ainda está no exemplo. Responda SIM para zerar e lançar este valor.",
-        pendingText: text,
+        pendingParsed: parsed,
       };
     }
     cofre.reset();
@@ -45,8 +51,9 @@ export function launchText(cofre, text, { replaceDemo = false, note, rawText } =
       category: parsed.category,
       card: parsed.card,
       note: note || parsed.note,
+      date: parsed.date,
       source: "telegram",
-      rawText: rawText || text,
+      rawText,
     });
   } catch (error) {
     return { ok: false, error: error.message };
@@ -157,14 +164,33 @@ export async function handleMessage(cofre, message, token) {
   if (command === "sim" && pending.has(chatId)) {
     const draft = pending.get(chatId);
     pending.delete(chatId);
-    const result = launchText(cofre, draft.text, { replaceDemo: true, note: draft.note, rawText: draft.text });
+    const result = draft.parsed
+      ? launchParsed(cofre, draft.parsed, { replaceDemo: true, note: draft.note, rawText: draft.text })
+      : launchText(cofre, draft.text, { replaceDemo: true, note: draft.note, rawText: draft.text });
     await replyTo(token, chatId, result.ok ? result.reply : result.error);
     return;
   }
 
-  const result = launchText(cofre, text, { note: caption || undefined, rawText: text });
+  let interpreted = null;
+  try {
+    interpreted = await understandMessage(text, cofre.snapshot());
+  } catch (error) {
+    console.error(`Telegram IA: ${error.message}`);
+  }
+
+  if (interpreted && interpreted.intent !== "transaction") {
+    const answer = interpreted.intent === "summary"
+      ? interpreted.reply || formatSituationMessage(cofre.snapshot().situation)
+      : interpreted.reply || HELP;
+    await replyTo(token, chatId, answer);
+    return;
+  }
+
+  const result = interpreted
+    ? launchParsed(cofre, interpreted, { note: caption || interpreted.note, rawText: text })
+    : launchText(cofre, text, { note: caption || undefined, rawText: text });
   if (result.code === "DEMO") {
-    pending.set(chatId, { text, note: caption || undefined });
+    pending.set(chatId, { text, parsed: interpreted, note: caption || interpreted?.note });
   }
   await replyTo(token, chatId, result.ok ? result.reply : result.error);
 }
