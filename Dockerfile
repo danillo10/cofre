@@ -19,5 +19,4 @@ ENV NODE_ENV=production \
     COFRE_NO_DEMO=1
 
 EXPOSE 8787
-VOLUME ["/data"]
 CMD ["npm", "start"]
