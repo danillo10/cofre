@@ -18,7 +18,7 @@ const HELP = [
   "paguei 200 no Nubank",
   "",
   "Pode escrever naturalmente: a IA entende frases como “ontem gastei quarenta reais no almoço”.",
-  "Na foto, eu procuro a linha do total. Se ela falhar, escreve o valor na legenda.",
+  "Na foto, a IA lê o total, a data e as parcelas. Se ficar ilegível, escreve o valor na legenda.",
   "/resumo mostra se a situação está sob controle ou piorando.",
 ].join("\n");
 
@@ -44,30 +44,62 @@ export function launchParsed(cofre, parsed, { replaceDemo = false, note, rawText
     }
     cofre.reset();
   }
+  const installments = splitInstallments(parsed);
   try {
-    cofre.addTransaction({
-      kind: parsed.kind,
-      amountCents: parsed.amountCents,
-      category: parsed.category,
-      card: parsed.card,
-      note: note || parsed.note,
-      date: parsed.date,
-      source: "telegram",
-      rawText,
-    });
+    for (const installment of installments) {
+      cofre.addTransaction({
+        kind: parsed.kind,
+        amountCents: installment.amountCents,
+        category: parsed.category,
+        card: parsed.card,
+        note: installment.note,
+        date: installment.date,
+        source: "telegram",
+        rawText,
+      });
+    }
   } catch (error) {
     return { ok: false, error: error.message };
   }
   const state = cofre.snapshot();
-  return { ok: true, parsed, reply: formatLaunchReply(parsed, state), state };
+  return { ok: true, parsed, reply: formatLaunchReply(parsed, state, installments), state };
 }
 
-function formatLaunchReply(parsed, state) {
+function addMonths(iso, offset) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + offset, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  return [
+    target.getUTCFullYear(),
+    String(target.getUTCMonth() + 1).padStart(2, "0"),
+    String(Math.min(day, lastDay)).padStart(2, "0"),
+  ].join("-");
+}
+
+function splitInstallments(parsed) {
+  const count = parsed.kind === "expense" && Number.isInteger(parsed.installmentCount)
+    ? Math.max(1, Math.min(60, parsed.installmentCount))
+    : 1;
+  const base = Math.floor(parsed.amountCents / count);
+  const remainder = parsed.amountCents % count;
+  const firstDate = parsed.date;
+  const label = parsed.note || "Compra";
+  return Array.from({ length: count }, (_, index) => ({
+    amountCents: base + (index < remainder ? 1 : 0),
+    date: firstDate ? addMonths(firstDate, index) : undefined,
+    note: count > 1 ? `${label} · parcela ${index + 1}/${count}`.slice(0, 160) : label,
+  }));
+}
+
+function formatLaunchReply(parsed, state, installments) {
   const label = parsed.kind === "card_payment"
     ? "Pagamento"
     : categoryLabel(parsed.kind, parsed.category);
   const where = parsed.card ? ` no ${parsed.card}` : "";
-  return [`Nara lançou ${formatBRL(parsed.amountCents)} em ${label}${where}.`, "", formatSituationMessage(state.situation)].join("\n");
+  const launch = installments.length > 1
+    ? `Nara registrou ${installments.length} parcelas de ${formatBRL(parsed.amountCents)} no total em ${label}${where}.`
+    : `Nara lançou ${formatBRL(parsed.amountCents)} em ${label}${where}.`;
+  return [launch, "", formatSituationMessage(state.situation)].join("\n");
 }
 
 async function readImageText(buffer) {
@@ -103,7 +135,9 @@ async function downloadPhoto(token, fileId) {
   if (!meta.ok) throw new Error(meta.description || "Não consegui baixar a foto");
   const file = await fetch(`https://api.telegram.org/file/bot${token}/${meta.result.file_path}`);
   if (!file.ok) throw new Error("Não consegui baixar a foto");
-  return Buffer.from(await file.arrayBuffer());
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.length > 15 * 1024 * 1024) throw new Error("A imagem passou de 15 MB");
+  return { buffer, mime: file.headers.get("content-type") || "image/jpeg" };
 }
 
 function allowedChat(cofre, chatId) {
@@ -130,13 +164,14 @@ export async function handleMessage(cofre, message, token) {
 
   const caption = message.caption?.trim() || "";
   let text = message.text?.trim() || caption;
+  let image = null;
   if (message.photo?.length) {
     const fileId = message.photo[message.photo.length - 1].file_id;
-    const bytes = await downloadPhoto(token, fileId);
-    const ocr = await readImageText(bytes);
+    image = await downloadPhoto(token, fileId);
+    const ocr = await readImageText(image.buffer);
     text = [caption, ocr].filter(Boolean).join("\n");
   }
-  if (!text) {
+  if (!text && !image) {
     await replyTo(token, chatId, "Não consegui ler essa mensagem.\n\n" + HELP);
     return;
   }
@@ -173,7 +208,7 @@ export async function handleMessage(cofre, message, token) {
 
   let interpreted = null;
   try {
-    interpreted = await understandMessage(text, cofre.snapshot());
+    interpreted = await understandMessage(text, cofre.snapshot(), { image });
   } catch (error) {
     console.error(`Telegram IA: ${error.message}`);
   }

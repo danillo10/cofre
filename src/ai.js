@@ -51,6 +51,11 @@ function validate(result, state) {
   if (!Number.isInteger(result.amountCents) || result.amountCents <= 0 || result.amountCents > 100_000_000) {
     throw new Error("Valor inválido retornado pela IA");
   }
+  if (!Number.isInteger(result.installmentCount) || result.installmentCount < 1 || result.installmentCount > 60) {
+    result.installmentCount = 1;
+  }
+  result.installmentCount = Math.min(result.installmentCount, result.amountCents);
+  if (result.kind !== "expense") result.installmentCount = 1;
   const allowed = result.kind === "income" ? incomeIds : expenseIds;
   if (result.kind !== "card_payment" && !allowed.includes(result.category)) {
     result.category = "outros";
@@ -72,7 +77,7 @@ export function aiEnabled() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-export async function understandMessage(text, state) {
+export async function understandMessage(text, state, { image } = {}) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
 
@@ -87,10 +92,29 @@ export async function understandMessage(text, state) {
       card: { type: ["string", "null"] },
       date: { type: ["string", "null"] },
       note: { type: ["string", "null"] },
+      installmentCount: { type: ["integer", "null"] },
       reply: { type: ["string", "null"] },
     },
-    required: ["intent", "kind", "amountCents", "category", "card", "date", "note", "reply"],
+    required: ["intent", "kind", "amountCents", "category", "card", "date", "note", "installmentCount", "reply"],
   };
+
+  const context = JSON.stringify({
+    message: String(text || "Analise a imagem enviada.").slice(0, 6000),
+    context: financialContext(state),
+  });
+  const input = image
+    ? [{
+        role: "user",
+        content: [
+          { type: "input_text", text: context },
+          {
+            type: "input_image",
+            image_url: `data:${image.mime || "image/jpeg"};base64,${image.buffer.toString("base64")}`,
+            detail: "high",
+          },
+        ],
+      }]
+    : context;
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -104,16 +128,20 @@ export async function understandMessage(text, state) {
         "Você é Nara, assistente financeira pessoal brasileira do Cofre.",
         "Entenda linguagem informal em português e classifique a intenção.",
         "transaction: o usuário informa uma receita, gasto ou pagamento de fatura já realizado.",
+        "Compra no cartão, inclusive parcelada, é expense. card_payment é somente quando o usuário pagou ou quitou uma fatura já existente.",
         "summary: pede saldo, resumo, situação, gastos, receitas, limites ou orçamento.",
         "help: pergunta como usar o bot. chat: conversa ou pergunta financeira que pode ser respondida com o contexto.",
         "unknown: faltam dados essenciais; em reply faça uma única pergunta objetiva.",
         "Valores são em reais, mas amountCents deve ser inteiro em centavos. 'quarenta reais' = 4000.",
         `Categorias de gasto: ${expenseIds.join(", ")}. Categorias de receita: ${incomeIds.join(", ")}.`,
         `Cartões cadastrados: ${state.cards.map((card) => card.name).join(", ") || "nenhum"}.`,
+        "Em foto de cupom, comprovante ou nota, leia o estabelecimento, a data e o valor TOTAL; não some itens se houver total.",
+        "Se a compra for parcelada, amountCents é o valor TOTAL da compra e installmentCount é a quantidade de parcelas.",
+        "Se não for parcelada, installmentCount é 1. Não confunda '1/10' com data.",
         "Use a data informada; para hoje use a data do contexto. Nunca invente valor, cartão ou transação.",
         "Para transaction, reply deve ser null. Para outras intenções, responda em português, curto e claro.",
       ].join("\n"),
-      input: JSON.stringify({ message: String(text).slice(0, 4000), context: financialContext(state) }),
+      input,
       text: {
         format: {
           type: "json_schema",

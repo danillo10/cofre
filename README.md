@@ -44,7 +44,7 @@ Com o token e `OPENAI_API_KEY` ativos, o Cofre entende linguagem natural, respon
 
 A Nara responde com o valor lançado e com a situação (sob controle, apertando, piorando ou fora de controle). O painel em http://127.0.0.1:8787 atualiza sozinho. Enquanto o mês de exemplo estiver na tela, responda `SIM` para zerar e lançar de verdade.
 
-A leitura da foto usa o Tesseract, se estiver instalado (`sudo apt install tesseract-ocr tesseract-ocr-por`). Sem ele, a legenda da foto ainda vale.
+A foto é enviada à visão da IA junto com o texto extraído pelo Tesseract. Ela identifica total, data, categoria e parcelamento. Uma compra parcelada gera um lançamento por mês, numerado como `parcela 1/N`, preservando o valor total. Sem IA ou OCR, a legenda da foto ainda vale.
 
 O mesmo token não pode ficar ao mesmo tempo no gateway do OpenClaw: os dois disputariam as mensagens. Use este bot para lançar. Se quiser conversar com o OpenClaw, crie um segundo bot.
 

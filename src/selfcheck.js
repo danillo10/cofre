@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Cofre } from "./engine.js";
-import { launchText } from "./inbox.js";
+import { launchParsed, launchText } from "./inbox.js";
 import { parseLaunch } from "./parse.js";
 import { daysBetween, formatBRL, nextDueDate, toCents } from "./money.js";
 
@@ -91,6 +91,21 @@ try {
   assert(launched.ok, launched.error || "lançamento por texto");
   assert(launched.state.transactions.some((row) => row.source === "telegram" && row.amountCents === 1500), "origem telegram");
   assert(launched.reply.includes(launched.state.situation.headline), "resposta traz a situação");
+  const parcelled = launchParsed(cofre, {
+    intent: "transaction",
+    kind: "expense",
+    amountCents: 10000,
+    category: "outros",
+    card: null,
+    date: cofre.today(),
+    note: "Compra parcelada",
+    installmentCount: 3,
+  }, { rawText: "compra de 100 em 3 vezes" });
+  assert(parcelled.ok, parcelled.error || "lançamento parcelado");
+  const parts = parcelled.state.transactions.filter((row) => row.note.startsWith("Compra parcelada · parcela"));
+  assert(parts.length === 3, "cria todas as parcelas");
+  assert(parts.reduce((sum, row) => sum + row.amountCents, 0) === 10000, "parcelas preservam o total");
+  assert(parts.some((row) => row.note.endsWith("3/3")), "numera parcelas");
 
   console.log(`ok · exemplo em ${formatBRL(demo.monthExpenseCents)} de gastos e nível ${demo.game.level}`);
 } catch (error) {
