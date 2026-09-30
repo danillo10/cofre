@@ -1,0 +1,18 @@
+services:
+  cofre:
+    build: .
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      COFRE_DB: /data/cofre.sqlite
+      COFRE_NO_DEMO: "1"
+    volumes:
+      - cofre-data:/data
+    restart: unless-stopped
+
+volumes:
+  cofre-data:
