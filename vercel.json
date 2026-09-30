@@ -1,5 +1,12 @@
 {
   "framework": null,
   "buildCommand": "",
-  "outputDirectory": "public"
+  "installCommand": "",
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://cofre-production-3daa.up.railway.app/api/:path*"
+    }
+  ]
 }
