@@ -137,7 +137,17 @@ async function downloadPhoto(token, fileId) {
   if (!file.ok) throw new Error("Não consegui baixar a foto");
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.length > 15 * 1024 * 1024) throw new Error("A imagem passou de 15 MB");
-  return { buffer, mime: file.headers.get("content-type") || "image/jpeg" };
+  const receivedType = file.headers.get("content-type") || "";
+  const extension = path.extname(meta.result.file_path || "").toLowerCase();
+  const inferredType = {
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  }[extension];
+  const mime = receivedType.startsWith("image/") ? receivedType : inferredType || "image/jpeg";
+  return { buffer, mime };
 }
 
 function allowedChat(cofre, chatId) {
