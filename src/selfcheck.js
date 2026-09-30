@@ -52,8 +52,6 @@ try {
   assert(demo.situation.weeks.length === 4, "quatro semanas");
   assert(demo.situation.tone === "bad" || demo.situation.headline === "Fora de controle" || demo.situation.headline === "Piorando", `situação do exemplo: ${demo.situation.headline}`);
   assert(demo.agents.length === 3, "três agentes");
-  const blockedLaunch = launchText(cofre, "12,50 padaria");
-  assert(blockedLaunch.code === "DEMO", "exemplo pede confirmação");
   const nubank = demo.cards.find((card) => card.name === "Nubank");
   assert(nubank.ratio >= 0.7, `uso do limite baixo: ${nubank.ratio}`);
   assert(nubank.daysUntilDue >= 0 && nubank.daysUntilDue <= 3, "vencimento do exemplo");

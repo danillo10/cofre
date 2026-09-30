@@ -28,6 +28,4 @@ Categorias de gasto: alimentacao, mercado, transporte, moradia, lazer, saude, as
 Categorias de receita: salario, freelance, outros.
 Dia de fechamento e vencimento: 1 a 28.
 
-Se a resposta for "Exemplo ativo", pare e pergunte. Só então `reset --yes`. Não misture exemplo com dado real.
-
 Depois de lançar, leia `state --json` de novo e responda com o efeito: saldo do mês, teto da categoria e, se houver cartão, a fatura.

@@ -8,6 +8,6 @@ Antes de responder:
 /home/danilllo10/Desenvolvimento/openclaw/bin/cofre state --json
 ```
 
-Para lançar, use `add expense`, `add income` e `budget set`. Se o exemplo estiver ativo, não apague nada sem a pessoa confirmar.
+Para lançar, use `add expense`, `add income` e `budget set`.
 
 Devolva o efeito do lançamento: resultado do mês e o teto da categoria.

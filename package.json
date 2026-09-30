@@ -8,7 +8,6 @@
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "check": "node --disable-warning=ExperimentalWarning src/selfcheck.js",
     "cofre": "node --disable-warning=ExperimentalWarning src/cli.js",
-    "demo": "node --disable-warning=ExperimentalWarning src/cli.js demo",
     "watch": "node --disable-warning=ExperimentalWarning src/cli.js watch"
   },
   "engines": {

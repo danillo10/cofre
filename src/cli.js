@@ -27,11 +27,7 @@ function fail(error) {
 }
 
 function takeOverFromDemo() {
-  if (!cofre.isDemo()) return;
-  if (!process.argv.includes("--own")) {
-    throw new Error("Exemplo ativo. Rode reset --yes antes, ou repita o comando com --own para zerar e usar os seus números.");
-  }
-  cofre.reset();
+  if (cofre.isDemo()) cofre.reset();
 }
 
 function help() {
@@ -47,7 +43,6 @@ function help() {
   add payment <valor> <cartão> [--note texto] [--date AAAA-MM-DD]
   card add <nome> --limit <valor> --close <dia> --due <dia>
   budget set <categoria> <valor>
-  demo                          carrega o mês de exemplo
   reset --yes                   apaga todos os dados
   watch                         envia alertas novos ao Telegram
 
@@ -64,7 +59,6 @@ try {
     const state = cofre.snapshot();
     if (json) {
       print({
-        demo: state.demo,
         cashCents: state.cashCents,
         monthIncomeCents: state.monthIncomeCents,
         monthExpenseCents: state.monthExpenseCents,
@@ -77,7 +71,7 @@ try {
       const sign = state.monthResultCents >= 0 ? "no azul" : "no vermelho";
       console.log(
         [
-          state.demo ? "Exemplo ativo. Estes números não são seus." : "Seus números.",
+          "Seus números.",
           `Caixa ${formatBRL(state.cashCents)}`,
           `Mês: entrou ${formatBRL(state.monthIncomeCents)}, saiu ${formatBRL(state.monthExpenseCents)} (${sign}).`,
           ...state.agents.map((agent) => `${agent.name}: ${agent.line}`),
@@ -124,9 +118,6 @@ try {
     takeOverFromDemo();
     cofre.setBudget(process.argv[4], process.argv[5]);
     console.log("Teto atualizado.");
-  } else if (command === "demo") {
-    cofre.seedDemo();
-    console.log("Exemplo carregado. O Telegram fica quieto enquanto esses dados estiverem ativos.");
   } else if (command === "reset") {
     if (!process.argv.includes("--yes")) throw new Error("Use reset --yes para apagar os dados");
     cofre.reset();
@@ -139,8 +130,6 @@ try {
       console.log("\nTelegram ainda sem token ou chat. Nada foi marcado como enviado.");
     } else if (result.reason === "quiet-hours") {
       console.log("Fora da janela 08:00–22:00. Vou avisar de manhã.");
-    } else if (result.reason === "demo") {
-      console.log("Exemplo ativo. Não enviei alerta fictício.");
     } else {
       console.log("Nada novo para avisar.");
     }

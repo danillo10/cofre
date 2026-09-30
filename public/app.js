@@ -51,29 +51,13 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function mutate(path, options, retryBody) {
+async function mutate(path, options) {
   try {
     state = await api(path, options);
     clearError();
     render();
     return true;
   } catch (error) {
-    if (error.code === "DEMO") {
-      const ok = confirm("Isso apaga o mês de exemplo e passa a valer os seus lançamentos. Continuar?");
-      if (!ok) return false;
-      try {
-        state = await api(path, {
-          ...options,
-          body: { ...retryBody, replaceDemo: true },
-        });
-      } catch (retryError) {
-        showError(retryError);
-        return false;
-      }
-      clearError();
-      render();
-      return true;
-    }
     showError(error);
     return false;
   }
@@ -112,17 +96,6 @@ function render() {
     el("div", { class: "xp" }, el("span", { style: `width:${Math.round(game.progress * 100)}%` })),
     el("small", { class: "muted" }, game.nextTitle ? `${game.xp} XP · faltam ${game.remaining} XP` : `${game.xp} XP`),
   );
-
-  const banner = document.querySelector("#banner");
-  banner.replaceChildren();
-  if (state.demo) {
-    banner.append(
-      el("div", { class: "banner" }, [
-        el("strong", {}, "Mês de exemplo. "),
-        "No Telegram, responda SIM para zerar e lançar o primeiro valor de verdade.",
-      ]),
-    );
-  }
 
   const situation = state.situation;
   const maxWeek = Math.max(...situation.weeks.map((week) => week.cents), 1);
@@ -290,15 +263,10 @@ function render() {
     );
   }
 
-  document.querySelector("#demo-button").textContent = state.demo ? "Recarregar exemplo" : "Ver exemplo";
   syncForm();
 }
 
 async function removeRow(id) {
-  if (state.demo) {
-    showError(new Error("Zere o exemplo antes de apagar lançamentos."));
-    return;
-  }
   if (!confirm("Apagar este lançamento?")) return;
   try {
     state = await api(`/api/transactions/${id}`, { method: "DELETE", body: {} });
@@ -321,7 +289,7 @@ document.querySelector("#move-form").addEventListener("submit", async (event) =>
     date: form.date.value,
   };
   form.querySelector("button").disabled = true;
-  const saved = await mutate("/api/transactions", { method: "POST", body }, body);
+  const saved = await mutate("/api/transactions", { method: "POST", body });
   form.querySelector("button").disabled = false;
   if (!saved) return;
   form.amount.value = "";
@@ -334,7 +302,7 @@ document.querySelector("#budget-form").addEventListener("submit", async (event) 
   event.preventDefault();
   const form = event.currentTarget;
   const body = { category: form.category.value, limit: form.limit.value };
-  const saved = await mutate("/api/budgets", { method: "POST", body }, body);
+  const saved = await mutate("/api/budgets", { method: "POST", body });
   if (saved) form.limit.value = "";
 });
 
@@ -347,26 +315,12 @@ document.querySelector("#card-form").addEventListener("submit", async (event) =>
     closeDay: Number(form.closeDay.value),
     dueDay: Number(form.dueDay.value),
   };
-  const saved = await mutate("/api/cards", { method: "POST", body }, body);
+  const saved = await mutate("/api/cards", { method: "POST", body });
   if (saved) form.reset();
-});
-
-document.querySelector("#demo-button").addEventListener("click", async () => {
-  state = await api("/api/demo", { method: "POST", body: {} });
-  clearError();
-  render();
-});
-
-document.querySelector("#reset-button").addEventListener("click", async () => {
-  if (!confirm("Apagar cartões, tetos e lançamentos?")) return;
-  state = await api("/api/reset", { method: "POST", body: {} });
-  clearError();
-  render();
 });
 
 function signature(value) {
   return JSON.stringify([
-    value.demo,
     value.transactions[0]?.id ?? 0,
     value.transactions.length,
     value.monthExpenseCents,

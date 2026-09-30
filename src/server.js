@@ -10,7 +10,6 @@ loadEnv();
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const publicDir = path.join(root, "public");
 const cofre = new Cofre();
-if (cofre.isEmpty() && process.env.COFRE_NO_DEMO !== "1") cofre.seedDemo();
 
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "0.0.0.0";
@@ -79,19 +78,7 @@ function statePayload() {
 
 function replyState(res) {
   send(res, 200, JSON.stringify(statePayload()));
-  if (telegramConfig(cofre) && !cofre.isDemo()) watchSafely();
-}
-
-function ensureOwnData(body) {
-  if (!cofre.isDemo()) return;
-  if (body?.replaceDemo) {
-    cofre.reset();
-    return;
-  }
-  const error = new Error("Os números na tela são um exemplo. Zere antes de lançar os seus.");
-  error.code = "DEMO";
-  error.status = 409;
-  throw error;
+  if (telegramConfig(cofre)) watchSafely();
 }
 
 function serveStatic(req, res) {
@@ -122,26 +109,15 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, JSON.stringify(statePayload()));
       return;
     }
-    if (req.method === "POST" && url.pathname === "/api/demo") {
-      cofre.seedDemo();
-      replyState(res);
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/api/reset") {
-      cofre.reset();
-      replyState(res);
-      return;
-    }
     if (req.method === "POST" && url.pathname === "/api/launch") {
       const body = await readBody(req);
       const result = launchText(cofre, body.text, {
-        replaceDemo: Boolean(body.replaceDemo),
         note: body.note,
       });
       if (!result.ok) {
         const error = new Error(result.error);
         error.code = result.code;
-        error.status = result.code === "DEMO" ? 409 : 400;
+        error.status = 400;
         throw error;
       }
       replyState(res);
@@ -149,28 +125,24 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/transactions") {
       const body = await readBody(req);
-      ensureOwnData(body);
       cofre.addTransaction(body);
       replyState(res);
       return;
     }
     if (req.method === "DELETE" && url.pathname.startsWith("/api/transactions/")) {
-      const body = await readBody(req);
-      ensureOwnData(body);
+      await readBody(req);
       cofre.deleteTransaction(url.pathname.split("/").pop());
       replyState(res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/cards") {
       const body = await readBody(req);
-      ensureOwnData(body);
       cofre.addCard(body);
       replyState(res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/budgets") {
       const body = await readBody(req);
-      ensureOwnData(body);
       cofre.setBudget(body.category, body.limit);
       replyState(res);
       return;

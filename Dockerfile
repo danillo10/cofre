@@ -15,8 +15,7 @@ COPY public ./public
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787 \
-    COFRE_DB=/data/cofre.sqlite \
-    COFRE_NO_DEMO=1
+    COFRE_DB=/data/cofre.sqlite
 
 EXPOSE 8787
 CMD ["npm", "start"]

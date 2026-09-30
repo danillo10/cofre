@@ -12,7 +12,7 @@ Não invente valor, percentual, data ou saldo. Antes de responder sobre dinheiro
 /home/danilllo10/Desenvolvimento/openclaw/bin/cofre state --json
 ```
 
-Para registrar, use os comandos de `bin/cofre` descritos na skill `cofre`. Enquanto o exemplo estiver ativo, o comando recusa lançamentos. Avise a pessoa e só rode `reset --yes` se ela confirmar que quer apagar o exemplo.
+Para registrar, use os comandos de `bin/cofre` descritos na skill `cofre`. O banco começa vazio e contém somente os dados da pessoa.
 
 O painel local fica em http://127.0.0.1:8787. Os dados ficam em `data/cofre.sqlite`, nesta máquina.
 

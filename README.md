@@ -12,7 +12,7 @@ npm start
 
 Abra http://127.0.0.1:8787
 
-Na primeira vez entra um mês de exemplo, para os três agentes terem o que dizer. Esse exemplo não é enviado ao Telegram. Para lançar os seus números, use **Zerar** ou registre um movimento e confirme a troca.
+Na primeira vez, o banco começa vazio e recebe somente os seus lançamentos.
 
 ## Agentes
 
@@ -43,7 +43,7 @@ Com o token e `OPENAI_API_KEY` ativos, o Cofre entende linguagem natural, respon
 - `paguei 200 no Nubank`
 - foto do cupom, de preferência com a palavra TOTAL visível; se a leitura falhar, escreva o valor na legenda
 
-A Nara confirma cada teto criado ou alterado. Depois de cada gasto, a resposta mostra quanto da categoria já foi usado e quanto ainda cabe. Ela também responde com a situação (sob controle, apertando, piorando ou fora de controle). O painel em http://127.0.0.1:8787 atualiza sozinho. Enquanto o mês de exemplo estiver na tela, responda `SIM` para zerar e lançar de verdade.
+A Nara confirma cada teto criado ou alterado. Depois de cada gasto, a resposta mostra quanto da categoria já foi usado e quanto ainda cabe. Ela também responde com a situação (sob controle, apertando, piorando ou fora de controle). O painel em http://127.0.0.1:8787 atualiza sozinho.
 
 A foto é enviada à visão da IA junto com o texto extraído pelo Tesseract. Ela identifica total, data, categoria e parcelamento. Uma compra parcelada gera um lançamento por mês, numerado como `parcela 1/N`, preservando o valor total. Sem IA ou OCR, a legenda da foto ainda vale.
 

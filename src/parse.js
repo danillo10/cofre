@@ -73,7 +73,7 @@ export function parseLaunch(text, { cards = [] } = {}) {
   const raw = String(text ?? "").trim();
   if (!raw) return null;
   const folded = fold(raw);
-  const command = folded.match(/^(sim|\/start|\/resumo|\/zerar|zerar)$/);
+  const command = folded.match(/^(\/start|\/resumo)$/);
   if (command) return { command: command[1].replace("/", "") };
 
   const amounts = extractAmounts(raw);

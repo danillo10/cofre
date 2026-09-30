@@ -8,8 +8,6 @@ import { parseLaunch } from "./parse.js";
 import { formatSituationMessage } from "./situation.js";
 import { botToken, sendTelegram, telegramConfig } from "./telegram.js";
 
-const pending = new Map();
-
 const HELP = [
   "Manda um gasto em texto ou uma foto do cupom.",
   "42,90 almoço",
@@ -23,28 +21,17 @@ const HELP = [
   "/resumo mostra se a situação está sob controle ou piorando.",
 ].join("\n");
 
-export function launchText(cofre, text, { replaceDemo = false, note, rawText } = {}) {
+export function launchText(cofre, text, { note, rawText } = {}) {
   const cards = cofre.snapshot().cards.map((card) => card.name);
   const parsed = parseLaunch(text, { cards });
   if (!parsed || parsed.command) {
     return { ok: false, error: "Não achei um valor. Exemplo: 42,90 almoço." };
   }
   if (parsed.error) return { ok: false, error: parsed.error };
-  return launchParsed(cofre, parsed, { replaceDemo, note, rawText: rawText || text });
+  return launchParsed(cofre, parsed, { note, rawText: rawText || text });
 }
 
-export function launchParsed(cofre, parsed, { replaceDemo = false, note, rawText = "" } = {}) {
-  if (cofre.isDemo()) {
-    if (!replaceDemo) {
-      return {
-        ok: false,
-        code: "DEMO",
-        error: "O painel ainda está no exemplo. Responda SIM para zerar e lançar este valor.",
-        pendingParsed: parsed,
-      };
-    }
-    cofre.reset();
-  }
+export function launchParsed(cofre, parsed, { note, rawText = "" } = {}) {
   const installments = splitInstallments(parsed);
   try {
     for (const installment of installments) {
@@ -217,26 +204,6 @@ export async function handleMessage(cofre, message, token) {
     await replyTo(token, chatId, formatSituationMessage(cofre.snapshot().situation));
     return;
   }
-  if (command === "zerar") {
-    if (!cofre.isDemo()) {
-      await replyTo(token, chatId, "Os dados reais ficam. Para apagar tudo, use Zerar no painel.");
-      return;
-    }
-    cofre.reset();
-    pending.delete(chatId);
-    await replyTo(token, chatId, "Exemplo apagado. Manda o próximo gasto.");
-    return;
-  }
-  if (command === "sim" && pending.has(chatId)) {
-    const draft = pending.get(chatId);
-    pending.delete(chatId);
-    const result = draft.parsed
-      ? launchParsed(cofre, draft.parsed, { replaceDemo: true, note: draft.note, rawText: draft.text })
-      : launchText(cofre, draft.text, { replaceDemo: true, note: draft.note, rawText: draft.text });
-    await replyTo(token, chatId, result.ok ? result.reply : result.error);
-    return;
-  }
-
   let interpreted = null;
   try {
     interpreted = await understandMessage(text, cofre.snapshot(), { image });
@@ -266,9 +233,6 @@ export async function handleMessage(cofre, message, token) {
   const result = interpreted
     ? launchParsed(cofre, interpreted, { note: caption || interpreted.note, rawText: text })
     : launchText(cofre, text, { note: caption || undefined, rawText: text });
-  if (result.code === "DEMO") {
-    pending.set(chatId, { text, parsed: interpreted, note: caption || interpreted?.note });
-  }
   await replyTo(token, chatId, result.ok ? result.reply : result.error);
 }
 

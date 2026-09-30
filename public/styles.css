@@ -33,7 +33,7 @@ h2 { margin: 0; font-size: 1.35rem; }
 .eyebrow { margin: 0 0 4px; color: var(--lime); letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.75rem; }
 .muted { color: var(--muted); margin: 0; }
 .note { margin: -4px 0 12px; }
-.top, .panel-head, .actions { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.top, .panel-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
 .top { margin-bottom: 22px; }
 .level {
   min-width: 220px;
@@ -48,13 +48,6 @@ h2 { margin: 0; font-size: 1.35rem; }
 .meter.usage > span { background: var(--amber); }
 .meter.over > span { background: var(--coral); }
 
-.banner {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: #2a2618;
-  border: 1px solid rgba(214, 242, 106, 0.35);
-}
 .toast {
   margin: 0 0 16px;
   padding: 12px 14px;
