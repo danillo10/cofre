@@ -136,6 +136,7 @@ export async function understandMessage(text, state, { image } = {}) {
         "Entenda linguagem informal em português e classifique a intenção.",
         "transaction: o usuário informa uma receita, gasto ou pagamento de fatura já realizado.",
         "budget: o usuário quer criar ou alterar um teto mensal de gastos para uma categoria; amountCents é o teto em centavos.",
+        "Uma frase como 'coloca um teto de gasto de alimentação 2000' é SEMPRE budget e NUNCA transaction.",
         "Compra no cartão, inclusive parcelada, é expense. card_payment é somente quando o usuário pagou ou quitou uma fatura já existente.",
         "summary: pede saldo, resumo, situação, gastos, receitas, limites ou orçamento.",
         "help: pergunta como usar o bot. chat: conversa ou pergunta financeira que pode ser respondida com o contexto.",

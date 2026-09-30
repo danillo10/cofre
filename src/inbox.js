@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { understandMessage } from "./ai.js";
 import { categoryLabel, formatBRL } from "./money.js";
-import { parseLaunch } from "./parse.js";
+import { parseBudgetRequest, parseLaunch } from "./parse.js";
 import { formatSituationMessage } from "./situation.js";
 import { botToken, sendTelegram, telegramConfig } from "./telegram.js";
 
@@ -110,6 +110,16 @@ function formatBudgetReply(state, category) {
   ].join("\n");
 }
 
+async function saveBudgetAndReply(cofre, token, chatId, budget) {
+  try {
+    cofre.setBudget(budget.category, budget.amountCents / 100);
+    const state = cofre.snapshot();
+    await replyTo(token, chatId, formatBudgetReply(state, budget.category));
+  } catch (error) {
+    await replyTo(token, chatId, error.message);
+  }
+}
+
 async function readImageText(buffer) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "cofre-"));
   const file = path.join(dir, "cupom");
@@ -204,6 +214,13 @@ export async function handleMessage(cofre, message, token) {
     await replyTo(token, chatId, formatSituationMessage(cofre.snapshot().situation));
     return;
   }
+
+  const explicitBudget = parseBudgetRequest(text);
+  if (explicitBudget) {
+    await saveBudgetAndReply(cofre, token, chatId, explicitBudget);
+    return;
+  }
+
   let interpreted = null;
   try {
     interpreted = await understandMessage(text, cofre.snapshot(), { image });
@@ -212,13 +229,7 @@ export async function handleMessage(cofre, message, token) {
   }
 
   if (interpreted?.intent === "budget") {
-    try {
-      cofre.setBudget(interpreted.category, interpreted.amountCents / 100);
-      const state = cofre.snapshot();
-      await replyTo(token, chatId, formatBudgetReply(state, interpreted.category));
-    } catch (error) {
-      await replyTo(token, chatId, error.message);
-    }
+    await saveBudgetAndReply(cofre, token, chatId, interpreted);
     return;
   }
 

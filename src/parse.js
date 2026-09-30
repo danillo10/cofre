@@ -64,9 +64,25 @@ function pickAmount(text, amounts) {
 
 function matchCategory(folded) {
   for (const [category, words] of CATEGORIES) {
-    if (words.some((word) => folded.includes(word))) return category;
+    if (folded.includes(category) || words.some((word) => folded.includes(word))) return category;
   }
   return null;
+}
+
+export function parseBudgetRequest(text) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return null;
+  const folded = fold(raw);
+  const asksToSet =
+    /\b(coloca|coloque|defina|define|cria|crie|muda|mude|altera|altere|ajusta|ajuste|estabeleca|quero)\b/.test(folded) ||
+    /^(teto|orcamento|limite)\b/.test(folded);
+  if (!asksToSet || !/\b(teto|orcamento|limite de gasto)\b/.test(folded)) return null;
+  const amounts = extractAmounts(raw);
+  if (amounts.length === 0) return null;
+  return {
+    category: matchCategory(folded) || "outros",
+    amountCents: pickAmount(raw, amounts).cents,
+  };
 }
 
 export function parseLaunch(text, { cards = [] } = {}) {

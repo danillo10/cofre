@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Cofre } from "./engine.js";
 import { launchParsed, launchText } from "./inbox.js";
-import { parseLaunch } from "./parse.js";
+import { parseBudgetRequest, parseLaunch } from "./parse.js";
 import { daysBetween, formatBRL, nextDueDate, toCents } from "./money.js";
 
 const dbPath = path.join(os.tmpdir(), `cofre-check-${process.pid}.sqlite`);
@@ -24,6 +24,10 @@ try {
   assert(market.amountCents === 123456 && market.category === "mercado", "milhar");
   const salary = parseLaunch("recebi 5200 de salário");
   assert(salary.kind === "income" && salary.category === "salario" && salary.amountCents === 520000, "salário");
+  const foodBudget = parseBudgetRequest("Coloca um teto de gasto de alimentação 2000");
+  assert(foodBudget.category === "alimentacao" && foodBudget.amountCents === 200000, "teto de alimentação");
+  const rentBudget = parseBudgetRequest("Coloca um teto de gasto para aluguel de 2200");
+  assert(rentBudget.category === "moradia" && rentBudget.amountCents === 220000, "teto de aluguel");
   const payment = parseLaunch("paguei 200 no Nubank", { cards: ["Nubank"] });
   assert(payment.kind === "card_payment" && payment.card === "Nubank" && payment.amountCents === 20000, "pagamento");
   const receipt = parseLaunch("PADARIA\n10/09/2026\nPao 5,00\nCafe 7,50\nTOTAL R$ 12,50");
