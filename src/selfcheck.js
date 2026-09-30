@@ -91,6 +91,7 @@ try {
   assert(launched.ok, launched.error || "lançamento por texto");
   assert(launched.state.transactions.some((row) => row.source === "telegram" && row.amountCents === 1500), "origem telegram");
   assert(launched.reply.includes(launched.state.situation.headline), "resposta traz a situação");
+  assert(launched.reply.includes("Teto de Alimentação"), "resposta atualiza o uso do teto");
   const parcelled = launchParsed(cofre, {
     intent: "transaction",
     kind: "expense",

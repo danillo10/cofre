@@ -43,8 +43,15 @@ function financialContext(state) {
 }
 
 function validate(result, state) {
-  if (!["transaction", "summary", "help", "chat", "unknown"].includes(result.intent)) {
+  if (!["transaction", "budget", "summary", "help", "chat", "unknown"].includes(result.intent)) {
     throw new Error("Intenção inválida retornada pela IA");
+  }
+  if (result.intent === "budget") {
+    if (!Number.isInteger(result.amountCents) || result.amountCents <= 0 || result.amountCents > 100_000_000) {
+      throw new Error("Valor de teto inválido retornado pela IA");
+    }
+    if (!expenseIds.includes(result.category)) result.category = "outros";
+    return result;
   }
   if (result.intent !== "transaction") return result;
   if (!kinds.includes(result.kind)) throw new Error("Tipo inválido retornado pela IA");
@@ -85,7 +92,7 @@ export async function understandMessage(text, state, { image } = {}) {
     type: "object",
     additionalProperties: false,
     properties: {
-      intent: { type: "string", enum: ["transaction", "summary", "help", "chat", "unknown"] },
+      intent: { type: "string", enum: ["transaction", "budget", "summary", "help", "chat", "unknown"] },
       kind: { type: ["string", "null"], enum: [...kinds, null] },
       amountCents: { type: ["integer", "null"] },
       category: { type: ["string", "null"], enum: [...new Set([...expenseIds, ...incomeIds]), null] },
@@ -128,6 +135,7 @@ export async function understandMessage(text, state, { image } = {}) {
         "Você é Nara, assistente financeira pessoal brasileira do Cofre.",
         "Entenda linguagem informal em português e classifique a intenção.",
         "transaction: o usuário informa uma receita, gasto ou pagamento de fatura já realizado.",
+        "budget: o usuário quer criar ou alterar um teto mensal de gastos para uma categoria; amountCents é o teto em centavos.",
         "Compra no cartão, inclusive parcelada, é expense. card_payment é somente quando o usuário pagou ou quitou uma fatura já existente.",
         "summary: pede saldo, resumo, situação, gastos, receitas, limites ou orçamento.",
         "help: pergunta como usar o bot. chat: conversa ou pergunta financeira que pode ser respondida com o contexto.",

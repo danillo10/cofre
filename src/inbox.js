@@ -16,6 +16,7 @@ const HELP = [
   "gastei 80 no mercado",
   "recebi 5200 de salário",
   "paguei 200 no Nubank",
+  "defina um teto de 600 para alimentação",
   "",
   "Pode escrever naturalmente: a IA entende frases como “ontem gastei quarenta reais no almoço”.",
   "Na foto, a IA lê o total, a data e as parcelas. Se ficar ilegível, escreve o valor na legenda.",
@@ -99,7 +100,27 @@ function formatLaunchReply(parsed, state, installments) {
   const launch = installments.length > 1
     ? `Nara registrou ${installments.length} parcelas de ${formatBRL(parsed.amountCents)} no total em ${label}${where}.`
     : `Nara lançou ${formatBRL(parsed.amountCents)} em ${label}${where}.`;
-  return [launch, "", formatSituationMessage(state.situation)].join("\n");
+  const budget = parsed.kind === "expense"
+    ? state.budgets.find((item) => item.category === parsed.category)
+    : null;
+  const budgetLine = budget
+    ? `Teto de ${budget.label}: ${formatBRL(budget.spentCents)} de ${formatBRL(budget.limitCents)} (${Math.round(budget.ratio * 100)}%).`
+    : null;
+  return [launch, budgetLine, "", formatSituationMessage(state.situation)].filter((line) => line !== null).join("\n");
+}
+
+function formatBudgetReply(state, category) {
+  const budget = state.budgets.find((item) => item.category === category);
+  const remaining = Math.max(0, budget.limitCents - budget.spentCents);
+  const status = budget.ratio >= 1
+    ? `O teto já foi ultrapassado em ${formatBRL(budget.spentCents - budget.limitCents)}.`
+    : `Ainda cabem ${formatBRL(remaining)} neste mês.`;
+  return [
+    `Teto de ${budget.label} atualizado para ${formatBRL(budget.limitCents)}.`,
+    `Usado: ${formatBRL(budget.spentCents)} (${Math.round(budget.ratio * 100)}%). ${status}`,
+    "",
+    formatSituationMessage(state.situation),
+  ].join("\n");
 }
 
 async function readImageText(buffer) {
@@ -221,6 +242,17 @@ export async function handleMessage(cofre, message, token) {
     interpreted = await understandMessage(text, cofre.snapshot(), { image });
   } catch (error) {
     console.error(`Telegram IA: ${error.message}`);
+  }
+
+  if (interpreted?.intent === "budget") {
+    try {
+      cofre.setBudget(interpreted.category, interpreted.amountCents / 100);
+      const state = cofre.snapshot();
+      await replyTo(token, chatId, formatBudgetReply(state, interpreted.category));
+    } catch (error) {
+      await replyTo(token, chatId, error.message);
+    }
+    return;
   }
 
   if (interpreted && interpreted.intent !== "transaction") {
