@@ -1,0 +1,4 @@
+Rode /home/danilllo10/Desenvolvimento/openclaw/bin/cofre pending --json.
+Se o JSON for uma lista vazia, responda exatamente NO_REPLY.
+Se houver alertas, avise em português, curto, com o nome do campo agent e o texto devolvido. Não invente número.
+Depois rode bin/cofre ack com os fingerprints dessa lista.

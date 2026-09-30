@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cofre</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <div>
+          <p class="eyebrow">OpenClaw · finanças</p>
+          <h1>Cofre</h1>
+        </div>
+        <div class="level" id="level"></div>
+      </header>
+
+      <div id="banner"></div>
+      <p class="toast" id="toast" hidden></p>
+      <section class="situation" id="situation" aria-label="Situação"></section>
+
+      <section class="agents" id="agents" aria-label="Agentes"></section>
+      <section class="stats" id="stats" aria-label="Resumo do mês"></section>
+
+      <div class="grid">
+        <div class="stack">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>Tetos do mês</h2>
+            </header>
+            <div id="budgets"></div>
+            <form class="inline-form" id="budget-form">
+              <select name="category" aria-label="Categoria do teto"></select>
+              <input name="limit" inputmode="decimal" placeholder="Teto em R$" required />
+              <button type="submit">Definir</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <h2>Crédito</h2>
+            </header>
+            <div id="cards"></div>
+            <details>
+              <summary>Novo cartão</summary>
+              <form class="card-form" id="card-form">
+                <input name="name" placeholder="Nome" required />
+                <input name="limit" inputmode="decimal" placeholder="Limite" required />
+                <input name="closeDay" inputmode="numeric" min="1" max="28" placeholder="Fecha dia" required />
+                <input name="dueDay" inputmode="numeric" min="1" max="28" placeholder="Vence dia" required />
+                <button type="submit">Adicionar</button>
+              </form>
+            </details>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>Alertas</h2>
+            </header>
+            <p id="telegram" class="muted note"></p>
+            <div id="alerts"></div>
+          </section>
+
+          <section class="panel" id="play">
+            <header class="panel-head">
+              <h2>Trilha da Luma</h2>
+            </header>
+            <div id="challenge"></div>
+            <div class="badges" id="badges"></div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <h2>Lançar</h2>
+            </header>
+            <form id="move-form" class="move-form">
+              <label>
+                Tipo
+                <select name="kind">
+                  <option value="expense">Gasto</option>
+                  <option value="income">Receita</option>
+                  <option value="card_payment">Pagamento de cartão</option>
+                </select>
+              </label>
+              <label>
+                Valor
+                <input name="amount" inputmode="decimal" placeholder="0,00" required />
+              </label>
+              <label id="category-label">
+                Categoria
+                <select name="category"></select>
+              </label>
+              <label id="card-label">
+                Cartão
+                <select name="card"></select>
+              </label>
+              <label>
+                Data
+                <input name="date" type="date" required />
+              </label>
+              <label class="wide">
+                Nota
+                <input name="note" maxlength="160" placeholder="Opcional" />
+              </label>
+              <button type="submit">Registrar</button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel ledger">
+        <header class="panel-head">
+          <h2>Movimentos</h2>
+          <div class="actions">
+            <button type="button" id="demo-button" class="ghost">Ver exemplo</button>
+            <button type="button" id="reset-button" class="ghost danger">Zerar</button>
+          </div>
+        </header>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Movimento</th>
+                <th>Onde</th>
+                <th>Valor</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

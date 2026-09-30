@@ -1,0 +1,65 @@
+{
+  // Copie para ~/.openclaw/openclaw.json e troque os dois marcadores.
+  // O bot do Telegram é criado no @BotFather com /newbot.
+  // O id numérico da sua conta aparece em @userinfobot.
+  gateway: { mode: "local" },
+  commands: {
+    ownerAllowFrom: ["telegram:COLOQUE_SEU_ID"],
+  },
+  agents: {
+    defaults: {
+      workspace: "/home/danilllo10/Desenvolvimento/openclaw/workspace",
+      userTimezone: "America/Sao_Paulo",
+      heartbeat: {
+        every: "2h",
+        target: "owner",
+        directPolicy: "allow",
+        isolatedSession: true,
+        lightContext: true,
+        activeHours: {
+          start: "08:00",
+          end: "22:00",
+          timezone: "America/Sao_Paulo",
+        },
+        prompt: "Rode /home/danilllo10/Desenvolvimento/openclaw/bin/cofre pending --json. Se a lista estiver vazia, responda exatamente NO_REPLY. Se houver alertas, avise em português com o nome do campo agent e o texto devolvido, sem inventar número. Depois rode /home/danilllo10/Desenvolvimento/openclaw/bin/cofre ack com os fingerprints.",
+      },
+    },
+    entries: {
+      cofre: {
+        default: true,
+        name: "Cofre",
+        workspace: "/home/danilllo10/Desenvolvimento/openclaw/workspace",
+        subagents: {
+          allowAgents: ["nara", "vigia", "luma"],
+          delegationMode: "prefer",
+        },
+      },
+      nara: {
+        name: "Nara",
+        workspace: "/home/danilllo10/Desenvolvimento/openclaw/agents/nara",
+        subagents: { allowAgents: [] },
+      },
+      vigia: {
+        name: "Vigia",
+        workspace: "/home/danilllo10/Desenvolvimento/openclaw/agents/vigia",
+        subagents: { allowAgents: [] },
+      },
+      luma: {
+        name: "Luma",
+        workspace: "/home/danilllo10/Desenvolvimento/openclaw/agents/luma",
+        subagents: { allowAgents: [] },
+      },
+    },
+  },
+  bindings: [
+    { agentId: "cofre", match: { channel: "telegram", accountId: "default" } },
+  ],
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "COLOQUE_O_TOKEN",
+      dmPolicy: "allowlist",
+      allowFrom: ["COLOQUE_SEU_ID"],
+    },
+  },
+}
