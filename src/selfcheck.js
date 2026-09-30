@@ -27,7 +27,9 @@ try {
   const foodBudget = parseBudgetRequest("Coloca um teto de gasto de alimentação 2000");
   assert(foodBudget.category === "alimentacao" && foodBudget.amountCents === 200000, "teto de alimentação");
   const rentBudget = parseBudgetRequest("Coloca um teto de gasto para aluguel de 2200");
-  assert(rentBudget.category === "moradia" && rentBudget.amountCents === 220000, "teto de aluguel");
+  assert(rentBudget.category === "aluguel" && rentBudget.amountCents === 220000, "categoria personalizada de aluguel");
+  const energyBudget = parseBudgetRequest("coloque um teto para energia de 350");
+  assert(energyBudget.category === "energia" && energyBudget.amountCents === 35000, "categoria personalizada de energia");
   const payment = parseLaunch("paguei 200 no Nubank", { cards: ["Nubank"] });
   assert(payment.kind === "card_payment" && payment.card === "Nubank" && payment.amountCents === 20000, "pagamento");
   const receipt = parseLaunch("PADARIA\n10/09/2026\nPao 5,00\nCafe 7,50\nTOTAL R$ 12,50");
@@ -65,8 +67,14 @@ try {
   assert(!cofre.isDemo() && cofre.isEmpty(), "reset limpa");
   const cardId = cofre.addCard({ name: "Nubank", limit: "1000", closeDay: 3, dueDay: 10 });
   cofre.setBudget("alimentacao", "100");
+  cofre.setBudget("energia", "350");
   cofre.addTransaction({ kind: "expense", amount: "80,00", category: "alimentacao", card: cardId, note: "almoço" });
+  cofre.addTransaction({ kind: "expense", amount: "50,00", category: "energia", note: "conta de luz" });
   let mid = cofre.snapshot();
+  assert(mid.budgets.some((budget) => budget.category === "energia" && budget.label === "Energia"), "teto personalizado");
+  assert(mid.categories.expense.some((category) => category.id === "energia"), "categoria personalizada disponível");
+  const energyLaunch = launchText(cofre, "gastei 25 reais de energia");
+  assert(energyLaunch.ok && energyLaunch.parsed.category === "energia", "lançamento usa categoria personalizada");
   assert(mid.alerts.some((alert) => alert.level === "atencao"), "80% avisa");
   assert(mid.alerts.filter((alert) => alert.pending).length > 0, "alerta real fica pendente");
   cofre.addTransaction({ kind: "expense", amount: 30, category: "alimentacao", card: "Nubank" });

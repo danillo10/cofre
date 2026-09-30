@@ -22,8 +22,9 @@ const HELP = [
 ].join("\n");
 
 export function launchText(cofre, text, { note, rawText } = {}) {
-  const cards = cofre.snapshot().cards.map((card) => card.name);
-  const parsed = parseLaunch(text, { cards });
+  const state = cofre.snapshot();
+  const cards = state.cards.map((card) => card.name);
+  const parsed = parseLaunch(text, { cards, categories: state.categories.expense });
   if (!parsed || parsed.command) {
     return { ok: false, error: "Não achei um valor. Exemplo: 42,90 almoço." };
   }

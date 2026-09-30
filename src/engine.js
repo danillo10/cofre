@@ -17,6 +17,7 @@ import {
   isoDate,
   monthBounds,
   nextDueDate,
+  normalizeCategory,
   toCents,
 } from "./money.js";
 import { buildSituation } from "./situation.js";
@@ -245,13 +246,24 @@ export class Cofre {
   }
 
   setBudget(category, limit) {
-    const id = assertCategory("expense", category);
+    const normalized = normalizeCategory(category);
+    let id = normalized;
+    try {
+      id = assertCategory("expense", normalized);
+    } catch {
+      // Tetos também criam categorias personalizadas.
+    }
     const cents = toCents(limit);
     this.db
       .prepare(
         "INSERT INTO budgets(category, limit_cents) VALUES(?, ?) ON CONFLICT(category) DO UPDATE SET limit_cents = excluded.limit_cents",
       )
       .run(id, cents);
+  }
+
+  deleteBudget(category) {
+    const id = normalizeCategory(category);
+    this.db.prepare("DELETE FROM budgets WHERE category = ?").run(id);
   }
 
   addTransaction({ kind, amount, amountCents, category, card, note, date, loggedOn, source = "painel", rawText = "" }) {
@@ -267,8 +279,18 @@ export class Cofre {
     const occurredOn = assertIsoDate(date || this.today());
     const logged = assertIsoDate(loggedOn || this.today());
     const safeNote = cleanNote(note);
-    const categoryId =
-      kind === "card_payment" ? "pagamento_cartao" : assertCategory(kind, category);
+    let categoryId = "pagamento_cartao";
+    if (kind !== "card_payment") {
+      const normalized = normalizeCategory(category);
+      try {
+        categoryId = assertCategory(kind, normalized);
+      } catch (error) {
+        const custom = kind === "expense" &&
+          this.db.prepare("SELECT 1 FROM budgets WHERE category = ?").get(normalized);
+        if (!custom) throw error;
+        categoryId = normalized;
+      }
+    }
     const cardRow = kind === "income" ? null : this.findCard(card);
     if (kind === "card_payment" && !cardRow) {
       throw new Error("Pagamento precisa de um cartão");
@@ -463,18 +485,16 @@ export class Cofre {
       };
     });
 
-    const budgetViews = EXPENSE_CATEGORIES.map(([id, label]) => {
-      const found = budgets.find((budget) => budget.category === id);
-      if (!found) return null;
-      const spent = spentByCategory[id] ?? 0;
+    const budgetViews = budgets.map((budget) => {
+      const spent = spentByCategory[budget.category] ?? 0;
       return {
-        category: id,
-        label,
-        limitCents: found.limit_cents,
+        category: budget.category,
+        label: categoryLabel("expense", budget.category),
+        limitCents: budget.limit_cents,
         spentCents: spent,
-        ratio: found.limit_cents > 0 ? spent / found.limit_cents : 0,
+        ratio: budget.limit_cents > 0 ? spent / budget.limit_cents : 0,
       };
-    }).filter(Boolean);
+    });
 
     const alerts = buildAlerts({
       today,
@@ -568,7 +588,15 @@ export class Cofre {
       challenge,
       agents,
       categories: {
-        expense: EXPENSE_CATEGORIES.map(([id, label]) => ({ id, label })),
+        expense: [
+          ...EXPENSE_CATEGORIES.map(([id, label]) => ({ id, label })),
+          ...budgets
+            .filter((budget) => !EXPENSE_CATEGORIES.some(([id]) => id === budget.category))
+            .map((budget) => ({
+              id: budget.category,
+              label: categoryLabel("expense", budget.category),
+            })),
+        ],
         income: INCOME_CATEGORIES.map(([id, label]) => ({ id, label })),
       },
     };

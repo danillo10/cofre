@@ -23,7 +23,22 @@ const INCOME_IDS = new Set(INCOME_CATEGORIES.map(([id]) => id));
 
 export function categoryLabel(kind, id) {
   const list = kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
-  return list.find(([key]) => key === id)?.[1] ?? id;
+  return list.find(([key]) => key === id)?.[1] ??
+    String(id || "outros")
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase("pt-BR"));
+}
+
+export function normalizeCategory(value) {
+  const id = String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (id.length < 2 || id.length > 40) throw new Error("Categoria inválida");
+  return id;
 }
 
 export function assertCategory(kind, id) {

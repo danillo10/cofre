@@ -1,4 +1,4 @@
-import { toCents } from "./money.js";
+import { normalizeCategory, toCents } from "./money.js";
 
 const CATEGORIES = [
   ["alimentacao", ["almoco", "jantar", "ifood", "restaurante", "lanche", "padaria", "cafe", "delivery", "pizza", "burger", "acai", "comida"]],
@@ -79,13 +79,30 @@ export function parseBudgetRequest(text) {
   if (!asksToSet || !/\b(teto|orcamento|limite de gasto)\b/.test(folded)) return null;
   const amounts = extractAmounts(raw);
   if (amounts.length === 0) return null;
+  const amount = pickAmount(raw, amounts);
+  const beforeAmount = fold(raw.slice(0, amount.index))
+    .replace(/\b(de|em|no valor de)\s*$/g, "")
+    .trim();
+  const parts = beforeAmount
+    .split(/\b(?:para|de)\b/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  let requested = parts.at(-1) || "";
+  if (parts.length === 1) {
+    requested = requested.replace(/^.*\b(?:teto|orcamento|limite)\b/, "").trim();
+  }
+  requested = requested
+    .replace(/\b(categoria|gasto|gastos|mensal|mensais)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const category = requested ? normalizeCategory(requested) : matchCategory(folded) || "outros";
   return {
-    category: matchCategory(folded) || "outros",
-    amountCents: pickAmount(raw, amounts).cents,
+    category,
+    amountCents: amount.cents,
   };
 }
 
-export function parseLaunch(text, { cards = [] } = {}) {
+export function parseLaunch(text, { cards = [], categories = [] } = {}) {
   const raw = String(text ?? "").trim();
   if (!raw) return null;
   const folded = fold(raw);
@@ -106,7 +123,12 @@ export function parseLaunch(text, { cards = [] } = {}) {
     if (folded.includes("freela") || folded.includes("freelance")) category = "freelance";
     else if (folded.includes("salario")) category = "salario";
   } else if (kind === "expense") {
-    category = matchCategory(folded) || "outros";
+    const custom = categories.find((item) => {
+      const id = typeof item === "string" ? item : item.id;
+      const label = typeof item === "string" ? item : item.label;
+      return folded.includes(fold(id)) || folded.includes(fold(label));
+    });
+    category = custom ? (typeof custom === "string" ? custom : custom.id) : matchCategory(folded) || "outros";
   }
 
   const card = cards.find((name) => folded.includes(fold(name))) ?? null;

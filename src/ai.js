@@ -1,4 +1,4 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "./money.js";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, normalizeCategory } from "./money.js";
 
 const expenseIds = EXPENSE_CATEGORIES.map(([id]) => id);
 const incomeIds = INCOME_CATEGORIES.map(([id]) => id);
@@ -50,7 +50,7 @@ function validate(result, state) {
     if (!Number.isInteger(result.amountCents) || result.amountCents <= 0 || result.amountCents > 100_000_000) {
       throw new Error("Valor de teto inválido retornado pela IA");
     }
-    if (!expenseIds.includes(result.category)) result.category = "outros";
+    result.category = normalizeCategory(result.categoryName || result.category || "outros");
     return result;
   }
   if (result.intent !== "transaction") return result;
@@ -63,7 +63,9 @@ function validate(result, state) {
   }
   result.installmentCount = Math.min(result.installmentCount, result.amountCents);
   if (result.kind !== "expense") result.installmentCount = 1;
-  const allowed = result.kind === "income" ? incomeIds : expenseIds;
+  const customExpenseIds = state.budgets.map((budget) => budget.category);
+  const allowed = result.kind === "income" ? incomeIds : [...expenseIds, ...customExpenseIds];
+  if (result.categoryName) result.category = normalizeCategory(result.categoryName);
   if (result.kind !== "card_payment" && !allowed.includes(result.category)) {
     result.category = "outros";
   }
@@ -88,6 +90,7 @@ export async function understandMessage(text, state, { image } = {}) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
 
+  const availableExpenseIds = [...new Set([...expenseIds, ...state.budgets.map((budget) => budget.category)])];
   const schema = {
     type: "object",
     additionalProperties: false,
@@ -95,14 +98,15 @@ export async function understandMessage(text, state, { image } = {}) {
       intent: { type: "string", enum: ["transaction", "budget", "summary", "help", "chat", "unknown"] },
       kind: { type: ["string", "null"], enum: [...kinds, null] },
       amountCents: { type: ["integer", "null"] },
-      category: { type: ["string", "null"], enum: [...new Set([...expenseIds, ...incomeIds]), null] },
+      category: { type: ["string", "null"], enum: [...new Set([...availableExpenseIds, ...incomeIds]), null] },
+      categoryName: { type: ["string", "null"] },
       card: { type: ["string", "null"] },
       date: { type: ["string", "null"] },
       note: { type: ["string", "null"] },
       installmentCount: { type: ["integer", "null"] },
       reply: { type: ["string", "null"] },
     },
-    required: ["intent", "kind", "amountCents", "category", "card", "date", "note", "installmentCount", "reply"],
+    required: ["intent", "kind", "amountCents", "category", "categoryName", "card", "date", "note", "installmentCount", "reply"],
   };
 
   const context = JSON.stringify({
@@ -142,7 +146,9 @@ export async function understandMessage(text, state, { image } = {}) {
         "help: pergunta como usar o bot. chat: conversa ou pergunta financeira que pode ser respondida com o contexto.",
         "unknown: faltam dados essenciais; em reply faça uma única pergunta objetiva.",
         "Valores são em reais, mas amountCents deve ser inteiro em centavos. 'quarenta reais' = 4000.",
-        `Categorias de gasto: ${expenseIds.join(", ")}. Categorias de receita: ${incomeIds.join(", ")}.`,
+        `Categorias de gasto existentes: ${availableExpenseIds.join(", ")}. Categorias de receita: ${incomeIds.join(", ")}.`,
+        "Em budget, preserve a categoria pedida. Se ela não existir, use category=null e categoryName com o nome exato para criá-la.",
+        "Em transaction, categoryName só pode ser uma categoria personalizada já existente; caso contrário use category.",
         `Cartões cadastrados: ${state.cards.map((card) => card.name).join(", ") || "nenhum"}.`,
         "Em foto de cupom, comprovante ou nota, leia o estabelecimento, a data e o valor TOTAL; não some itens se houver total.",
         "Se a compra for parcelada, amountCents é o valor TOTAL da compra e installmentCount é a quantidade de parcelas.",

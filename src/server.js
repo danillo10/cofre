@@ -147,6 +147,12 @@ const server = http.createServer(async (req, res) => {
       replyState(res);
       return;
     }
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/budgets/")) {
+      await readBody(req);
+      cofre.deleteBudget(decodeURIComponent(url.pathname.split("/").pop()));
+      replyState(res);
+      return;
+    }
     if (req.method === "GET") {
       serveStatic(req, res);
       return;
