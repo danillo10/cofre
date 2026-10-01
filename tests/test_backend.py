@@ -12,7 +12,7 @@ os.environ.pop("TELEGRAM_BOT_TOKEN", None)
 from fastapi.testclient import TestClient
 
 from cofre_app.db import Database
-from cofre_app.ai import FinancialIntent, TransactionDraft
+from cofre_app.ai import FinancialIntent, TransactionChanges, TransactionDraft, TransactionSelector
 from cofre_app.engine import Cofre, to_cents
 from cofre_app.main import app
 from cofre_app.telegram import apply_intent
@@ -93,6 +93,38 @@ class EngineTest(unittest.TestCase):
                 },
             ])
         self.assertEqual(self.cofre.snapshot()["transactions"], [])
+
+    def test_bulk_edit_by_date_description_and_value(self) -> None:
+        first = self.cofre.add_transaction({
+            "kind": "expense", "amount": "100", "category": "energia",
+            "date": "2026-09-30", "note": "Energia da casa",
+        })
+        second = self.cofre.add_transaction({
+            "kind": "expense", "amount": "100", "category": "internet",
+            "date": "2026-09-30", "note": "Internet antiga",
+        })
+        self.cofre.add_transaction({
+            "kind": "expense", "amount": "200", "category": "mercado",
+            "date": "2026-09-29", "note": "Mercado",
+        })
+        intent = FinancialIntent(
+            intent="edit_transactions",
+            selector=TransactionSelector(date="2026-09-30", amount_cents=10000),
+            changes=TransactionChanges(date="2026-10-01", amount_cents=12000),
+        )
+        reply = apply_intent(self.cofre, intent, "mude as contas de 30/09 no valor de 100")
+        self.assertIn("2 contas atualizadas", reply)
+        self.assertEqual(
+            self.cofre.find_transaction_ids({"date": "2026-10-01", "amount_cents": 12000}),
+            [first, second],
+        )
+        internet_ids = self.cofre.find_transaction_ids({"description_contains": "internet"})
+        self.cofre.update_transactions(internet_ids, {"note": "Internet fibra"})
+        self.assertEqual(internet_ids, [second])
+        self.assertEqual(
+            self.cofre.find_transaction_ids({"description_contains": "fibra"}),
+            [second],
+        )
 
 
 class ApiTest(unittest.TestCase):

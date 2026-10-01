@@ -240,12 +240,13 @@ function render() {
   const rows = document.querySelector("#rows");
   rows.replaceChildren();
   if (state.transactions.length === 0) {
-    rows.append(el("tr", {}, el("td", { colspan: "5" }, "Nenhum lançamento.")));
+    rows.append(el("tr", {}, el("td", { colspan: "6" }, "Nenhum lançamento.")));
   }
   for (const row of state.transactions) {
     const sign = row.kind === "income" ? "up" : row.kind === "expense" ? "down" : "";
     rows.append(
       el("tr", {}, [
+        el("td", { class: "account-id" }, `#${row.id}`),
         el("td", {}, day(row.occurredOn)),
         el("td", {}, [
           el("strong", {}, row.categoryLabel),

@@ -20,9 +20,28 @@ class TransactionDraft(BaseModel):
     installment_count: int = Field(default=1, ge=1, le=60)
 
 
+class TransactionSelector(BaseModel):
+    transaction_ids: list[int] = Field(default_factory=list)
+    date: str | None = None
+    description_contains: str | None = None
+    amount_cents: int | None = Field(default=None, gt=0, le=100_000_000)
+    kind: Literal["expense", "income", "card_payment"] | None = None
+    category: str | None = None
+
+
+class TransactionChanges(BaseModel):
+    kind: Literal["expense", "income", "card_payment"] | None = None
+    amount_cents: int | None = Field(default=None, gt=0, le=100_000_000)
+    category: str | None = None
+    category_name: str | None = None
+    card: str | None = None
+    date: str | None = None
+    note: str | None = None
+
+
 class FinancialIntent(BaseModel):
     intent: Literal[
-        "transaction", "edit_transaction", "delete_transaction",
+        "transaction", "edit_transaction", "edit_transactions", "delete_transaction",
         "budget", "delete_budget", "summary", "help", "chat", "unknown",
     ]
     transaction_id: int | None = None
@@ -35,6 +54,8 @@ class FinancialIntent(BaseModel):
     note: str | None = None
     installment_count: int = Field(default=1, ge=1, le=60)
     transactions: list[TransactionDraft] = Field(default_factory=list)
+    selector: TransactionSelector | None = None
+    changes: TransactionChanges | None = None
     reply: str | None = None
 
 
@@ -76,7 +97,17 @@ card_payment é somente pagamento de fatura. amount_cents é inteiro em centavos
 Use category com o id de uma categoria disponível quando ela combinar com a conta. Se nenhuma
 categoria disponível servir, preencha category_name com um nome específico para ela ser criada;
 não deixe ambos vazios quando a finalidade da conta estiver clara.
-edit_transaction e delete_transaction exigem um transaction_id existente no contexto.
+edit_transaction altera uma única conta por transaction_id.
+edit_transactions altera várias contas de uma vez. Preencha selector para localizar as contas
+por transaction_ids, date, description_contains, amount_cents, kind ou category; critérios
+combinados devem valer ao mesmo tempo. Preencha changes somente com os novos dados pedidos.
+Exemplos: "mude todas de 30/09 para 01/10" usa selector.date=2026-09-30 e
+changes.date=2026-10-01; "troque as contas com descrição internet para fibra" usa
+selector.description_contains="internet" e changes.note="fibra"; "as de 100 reais para 120"
+usa selector.amount_cents=10000 e changes.amount_cents=12000. Para "essas contas", "as últimas"
+ou referência à conversa, identifique os transaction_ids pelo histórico e recentTransactions.
+Se não for possível identificar com segurança quais contas serão alteradas, use unknown e pergunte.
+delete_transaction exige um transaction_id existente no contexto.
 budget cria ou altera teto; delete_budget exclui teto. Preserve categorias personalizadas em
 category_name. Em foto leia TOTAL, data, estabelecimento e parcelas; não some itens quando
 o documento for um único cupom. installment_count é maior que 1 somente se a própria conta

@@ -171,6 +171,28 @@ def apply_intent(cofre: Cofre, intent: FinancialIntent, raw_text: str) -> str:
         if len(confirmations) > len(shown):
             shown.append(f"… e mais {len(confirmations) - len(shown)} conta(s).")
         return "\n".join(["Nara registrou:", *shown, "", format_situation(cofre.snapshot()["situation"])])
+    if intent.intent == "edit_transactions":
+        if not intent.selector or not intent.changes:
+            raise ValueError("Diga quais contas devem mudar e quais são os novos dados.")
+        selector = intent.selector.model_dump(exclude_none=True)
+        ids = cofre.find_transaction_ids(selector)
+        if not ids:
+            raise ValueError("Não encontrei contas que correspondam à data, descrição ou valor informado.")
+        raw_changes = intent.changes.model_dump(exclude_none=True)
+        changes = {
+            key: value for key, value in {
+                "kind": raw_changes.get("kind"),
+                "amountCents": raw_changes.get("amount_cents"),
+                "category": raw_changes.get("category_name") or raw_changes.get("category"),
+                "card": raw_changes.get("card"),
+                "date": raw_changes.get("date"),
+                "note": raw_changes.get("note"),
+            }.items() if value is not None
+        }
+        cofre.update_transactions(ids, changes)
+        shown_ids = ", ".join(f"#{value}" for value in ids[:15])
+        suffix = f" e mais {len(ids) - 15}" if len(ids) > 15 else ""
+        return f"{len(ids)} contas atualizadas: {shown_ids}{suffix}."
     if intent.intent == "edit_transaction":
         if intent.transaction_id is None:
             raise ValueError("Diga o número da conta que devo editar.")
@@ -219,7 +241,10 @@ async def handle_message(cofre: Cofre, message: dict[str, Any]) -> None:
     if folded == "contas":
         rows = cofre.snapshot()["transactions"][:10]
         answer = "Ainda não há contas." if not rows else "\n".join(
-            ["Últimas contas"] + [f'#{r["id"]} · {r["note"] or r["categoryLabel"]} · {brl(r["amountCents"])}' for r in rows]
+            ["Últimas contas"] + [
+                f'#{r["id"]} · {r["occurredOn"]} · {r["note"] or r["categoryLabel"]} · {brl(r["amountCents"])}'
+                for r in rows
+            ]
         )
         await send(cofre, chat_id, answer)
         return

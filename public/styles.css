@@ -164,7 +164,8 @@ details summary { margin: 8px 0; color: var(--muted); }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: 0.85rem; }
 td, th { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-td.num, th:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+.account-id { color: var(--lime); font-weight: 700; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
 .icon-button { padding: 4px 8px; background: transparent; color: var(--muted); }
 

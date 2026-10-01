@@ -249,33 +249,83 @@ class Cofre:
     def add_transaction(self, data: dict[str, Any]) -> int:
         return self.add_transactions([data])[0][0]
 
-    def update_transaction(self, transaction_id: int, data: dict[str, Any]) -> None:
+    def find_transaction_ids(self, selector: dict[str, Any]) -> list[int]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        ids = [int(value) for value in selector.get("transaction_ids", [])]
+        if ids:
+            clauses.append(f'id IN ({",".join("?" for _ in ids)})')
+            values.extend(ids)
+        if selector.get("date"):
+            clauses.append("occurred_on=?")
+            values.append(valid_date(selector["date"]))
+        if selector.get("description_contains"):
+            description = str(selector["description_contains"]).strip()
+            if description:
+                clauses.append("instr(lower(note),lower(?))>0")
+                values.append(description)
+        if selector.get("amount_cents") is not None:
+            amount = int(selector["amount_cents"])
+            if amount <= 0:
+                raise ValueError("Valor de busca inválido")
+            clauses.append("amount_cents=?")
+            values.append(amount)
+        if selector.get("kind"):
+            if selector["kind"] not in {"expense", "income", "card_payment"}:
+                raise ValueError("Tipo de busca inválido")
+            clauses.append("kind=?")
+            values.append(selector["kind"])
+        if selector.get("category"):
+            clauses.append("category=?")
+            values.append(normalize_category(selector["category"]))
+        if not clauses:
+            raise ValueError("Informe o ID, data, descrição ou valor das contas")
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                f'SELECT id FROM transactions WHERE {" AND ".join(clauses)} ORDER BY occurred_on,id',
+                values,
+            ).fetchall()
+        return [int(row["id"]) for row in rows]
+
+    def _update_transaction(self, connection: Any, transaction_id: int, data: dict[str, Any]) -> None:
+        old = connection.execute("SELECT * FROM transactions WHERE id=?", (transaction_id,)).fetchone()
+        if not old:
+            raise ValueError(f"Conta #{transaction_id} não encontrada")
+        kind = data.get("kind", old["kind"])
+        cents = int(data["amountCents"]) if data.get("amountCents") is not None else (
+            to_cents(data["amount"]) if "amount" in data else old["amount_cents"]
+        )
+        category = self._resolve_category(connection, kind, data.get("category", old["category"]))
+        card = None if kind == "income" else self._card(connection, data.get("card", old["card_id"]))
+        if kind == "card_payment" and not card:
+            raise ValueError("Pagamento precisa de um cartão")
+        if old["card_id"] and old["kind"] == "expense":
+            connection.execute("UPDATE cards SET balance_cents=MAX(0,balance_cents-?) WHERE id=?", (old["amount_cents"], old["card_id"]))
+        elif old["card_id"] and old["kind"] == "card_payment":
+            connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (old["amount_cents"], old["card_id"]))
+        if kind == "card_payment" and cents > card["balance_cents"]:
+            raise ValueError("O pagamento é maior do que a fatura em aberto")
+        connection.execute(
+            "UPDATE transactions SET occurred_on=?,amount_cents=?,kind=?,category=?,card_id=?,note=? WHERE id=?",
+            (valid_date(data.get("date", old["occurred_on"])), cents, kind, category, card["id"] if card else None, str(data.get("note", old["note"])).strip(), transaction_id),
+        )
+        if card and kind == "expense":
+            connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (cents, card["id"]))
+        elif card and kind == "card_payment":
+            connection.execute("UPDATE cards SET balance_cents=balance_cents-? WHERE id=?", (cents, card["id"]))
+
+    def update_transactions(self, transaction_ids: list[int], data: dict[str, Any]) -> None:
+        ids = list(dict.fromkeys(int(value) for value in transaction_ids))
+        if not ids:
+            raise ValueError("Nenhuma conta encontrada para editar")
+        if not data:
+            raise ValueError("Diga o que deve ser alterado")
         with self.database.transaction() as connection:
-            old = connection.execute("SELECT * FROM transactions WHERE id=?", (transaction_id,)).fetchone()
-            if not old:
-                raise ValueError("Lançamento não encontrado")
-            kind = data.get("kind", old["kind"])
-            cents = int(data["amountCents"]) if data.get("amountCents") is not None else (
-                to_cents(data["amount"]) if "amount" in data else old["amount_cents"]
-            )
-            category = self._resolve_category(connection, kind, data.get("category", old["category"]))
-            card = None if kind == "income" else self._card(connection, data.get("card", old["card_id"]))
-            if kind == "card_payment" and not card:
-                raise ValueError("Pagamento precisa de um cartão")
-            if old["card_id"] and old["kind"] == "expense":
-                connection.execute("UPDATE cards SET balance_cents=MAX(0,balance_cents-?) WHERE id=?", (old["amount_cents"], old["card_id"]))
-            elif old["card_id"] and old["kind"] == "card_payment":
-                connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (old["amount_cents"], old["card_id"]))
-            if kind == "card_payment" and cents > card["balance_cents"]:
-                raise ValueError("O pagamento é maior do que a fatura em aberto")
-            connection.execute(
-                "UPDATE transactions SET occurred_on=?,amount_cents=?,kind=?,category=?,card_id=?,note=? WHERE id=?",
-                (valid_date(data.get("date", old["occurred_on"])), cents, kind, category, card["id"] if card else None, str(data.get("note", old["note"])).strip(), transaction_id),
-            )
-            if card and kind == "expense":
-                connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (cents, card["id"]))
-            elif card and kind == "card_payment":
-                connection.execute("UPDATE cards SET balance_cents=balance_cents-? WHERE id=?", (cents, card["id"]))
+            for transaction_id in ids:
+                self._update_transaction(connection, transaction_id, data)
+
+    def update_transaction(self, transaction_id: int, data: dict[str, Any]) -> None:
+        self.update_transactions([transaction_id], data)
 
     def delete_transaction(self, transaction_id: int) -> None:
         with self.database.transaction() as connection:
