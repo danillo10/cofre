@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM python:3.12-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -8,14 +8,17 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY package.json ./
-COPY src ./src
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY cofre_app ./cofre_app
 COPY public ./public
 
-ENV NODE_ENV=production \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \
     PORT=8787 \
     COFRE_DB=/data/cofre.sqlite
 
 EXPOSE 8787
-CMD ["npm", "start"]
+CMD ["sh", "-c", "uvicorn cofre_app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8787}"]

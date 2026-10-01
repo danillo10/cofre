@@ -1,13 +1,15 @@
 # Cofre
 
-Controle financeiro local para o OpenClaw. Três agentes olham o mesmo caixa: a Nara fecha gastos e tetos, o Vigia vigia limite e vencimento, a Luma leva a trilha de XP. O painel mostra tudo. O Telegram avisa quando um teto, um cartão ou um vencimento pede atenção.
+Controle financeiro em Python 3.12, FastAPI e LangChain. Três agentes olham o mesmo caixa: a Nara fecha gastos e tetos, o Vigia vigia limite e vencimento, a Luma leva a trilha de XP. O painel mostra tudo. O Telegram avisa quando um teto, um cartão ou um vencimento pede atenção.
 
-Os números ficam em `data/cofre.sqlite`, nesta máquina.
+Os números ficam em `data/cofre.sqlite` localmente e em `/data/cofre.sqlite` no volume persistente de produção.
 
 ## Painel
 
 ```bash
-npm start
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn cofre_app.main:app --host 127.0.0.1 --port 8787
 ```
 
 Abra http://127.0.0.1:8787
@@ -30,7 +32,7 @@ O Vigia avisa quando uma categoria passa de 80% e de 100% do teto, quando um car
 
 1. No Telegram, fale com o [@BotFather](https://t.me/BotFather), use `/newbot` e guarde o token.
 2. Descubra o seu id numérico com o [@userinfobot](https://t.me/userinfobot).
-3. Copie `.env.example` para `.env` e preencha `TELEGRAM_BOT_TOKEN`. O `TELEGRAM_CHAT_ID` é opcional: na primeira mensagem privada o Cofre grava a conversa. Reinicie com `npm start`.
+3. Copie `.env.example` para `.env` e preencha `TELEGRAM_BOT_TOKEN`. O `TELEGRAM_CHAT_ID` é opcional: na primeira mensagem privada o Cofre grava a conversa. Reinicie o servidor FastAPI.
 
 Com o token e `OPENAI_API_KEY` ativos, o Cofre usa `gpt-4o`, entende linguagem natural, responde perguntas sobre o seu cenário e transforma textos ou fotos em lançamentos. As últimas 50 mensagens da conversa ficam no SQLite; as 20 mais recentes são enviadas à IA para entender referências e continuações:
 
@@ -79,7 +81,8 @@ bin/cofre card add Nubank --limit 4000 --close 3 --due 10
 bin/cofre budget set alimentacao 600
 bin/cofre pending --json
 bin/cofre watch
-npm run check
+.venv/bin/python -m unittest tests.test_backend -v
+docker compose up --build
 ```
 
-`npm run check` confere o motor sem abrir o painel.
+Os comandos `bin/cofre` mantêm compatibilidade com a ferramenta local anterior. A API, o painel e o bot em produção rodam pelo backend Python.
