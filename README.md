@@ -32,7 +32,7 @@ O Vigia avisa quando uma categoria passa de 80% e de 100% do teto, quando um car
 2. Descubra o seu id numérico com o [@userinfobot](https://t.me/userinfobot).
 3. Copie `.env.example` para `.env` e preencha `TELEGRAM_BOT_TOKEN`. O `TELEGRAM_CHAT_ID` é opcional: na primeira mensagem privada o Cofre grava a conversa. Reinicie com `npm start`.
 
-Com o token e `OPENAI_API_KEY` ativos, o Cofre entende linguagem natural, responde perguntas sobre o seu cenário e transforma textos ou fotos em lançamentos:
+Com o token e `OPENAI_API_KEY` ativos, o Cofre usa `gpt-4o`, entende linguagem natural, responde perguntas sobre o seu cenário e transforma textos ou fotos em lançamentos. As últimas 50 mensagens da conversa ficam no SQLite; as 20 mais recentes são enviadas à IA para entender referências e continuações:
 
 - `42,90 almoço`
 - `gastei 80 no mercado`

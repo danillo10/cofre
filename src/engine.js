@@ -143,6 +143,15 @@ export class Cofre {
       CREATE TABLE IF NOT EXISTS telegram_updates (
         update_id INTEGER PRIMARY KEY
       );
+      CREATE TABLE IF NOT EXISTS conversation_messages (
+        id INTEGER PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS conversation_messages_chat
+        ON conversation_messages(chat_id, id);
       CREATE TABLE IF NOT EXISTS alert_log (
         fingerprint TEXT PRIMARY KEY,
         level TEXT NOT NULL,
@@ -170,6 +179,41 @@ export class Cofre {
     } catch {
       return false;
     }
+  }
+
+  addConversationMessage(chatId, role, content) {
+    if (!["user", "assistant"].includes(role)) throw new Error("Papel de conversa inválido");
+    const safe = String(content ?? "").trim().slice(0, 4000);
+    if (!safe) return;
+    const id = String(chatId);
+    this.db
+      .prepare("INSERT INTO conversation_messages(chat_id, role, content, created_at) VALUES(?, ?, ?, ?)")
+      .run(id, role, safe, new Date().toISOString());
+    this.db
+      .prepare(`
+        DELETE FROM conversation_messages
+        WHERE chat_id = ?
+          AND id NOT IN (
+            SELECT id FROM conversation_messages
+            WHERE chat_id = ?
+            ORDER BY id DESC
+            LIMIT 50
+          )
+      `)
+      .run(id, id);
+  }
+
+  conversationHistory(chatId, limit = 20) {
+    const rows = this.db
+      .prepare(`
+        SELECT role, content
+        FROM conversation_messages
+        WHERE chat_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+      `)
+      .all(String(chatId), Math.max(1, Math.min(50, Number(limit) || 20)));
+    return rows.reverse();
   }
 
   setting(key, fallback = null) {

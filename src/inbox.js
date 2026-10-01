@@ -115,9 +115,9 @@ async function saveBudgetAndReply(cofre, token, chatId, budget) {
   try {
     cofre.setBudget(budget.category, budget.amountCents / 100);
     const state = cofre.snapshot();
-    await replyTo(token, chatId, formatBudgetReply(state, budget.category));
+    await replyTo(cofre, token, chatId, formatBudgetReply(state, budget.category));
   } catch (error) {
-    await replyTo(token, chatId, error.message);
+    await replyTo(cofre, token, chatId, error.message);
   }
 }
 
@@ -180,14 +180,15 @@ function allowedChat(cofre, chatId) {
   return known === String(chatId);
 }
 
-async function replyTo(token, chatId, text) {
+async function replyTo(cofre, token, chatId, text) {
   await sendTelegram(token, chatId, text);
+  cofre?.addConversationMessage(chatId, "assistant", text);
 }
 
 export async function handleMessage(cofre, message, token) {
   const chatId = String(message.chat.id);
   if (!allowedChat(cofre, chatId)) {
-    await replyTo(token, chatId, "Este Cofre já está ligado a outra conversa.");
+    await replyTo(null, token, chatId, "Este Cofre já está ligado a outra conversa.");
     return;
   }
 
@@ -201,18 +202,20 @@ export async function handleMessage(cofre, message, token) {
     text = [caption, ocr].filter(Boolean).join("\n");
   }
   if (!text && !image) {
-    await replyTo(token, chatId, "Não consegui ler essa mensagem.\n\n" + HELP);
+    await replyTo(cofre, token, chatId, "Não consegui ler essa mensagem.\n\n" + HELP);
     return;
   }
 
+  const history = cofre.conversationHistory(chatId);
+  cofre.addConversationMessage(chatId, "user", text || "[Imagem enviada]");
   const folded = text.trim().toLowerCase();
   const command = folded.replace("/", "");
   if (command === "start") {
-    await replyTo(token, chatId, HELP);
+    await replyTo(cofre, token, chatId, HELP);
     return;
   }
   if (command === "resumo") {
-    await replyTo(token, chatId, formatSituationMessage(cofre.snapshot().situation));
+    await replyTo(cofre, token, chatId, formatSituationMessage(cofre.snapshot().situation));
     return;
   }
 
@@ -224,7 +227,7 @@ export async function handleMessage(cofre, message, token) {
 
   let interpreted = null;
   try {
-    interpreted = await understandMessage(text, cofre.snapshot(), { image });
+    interpreted = await understandMessage(text, cofre.snapshot(), { image, history });
   } catch (error) {
     console.error(`Telegram IA: ${error.message}`);
   }
@@ -238,14 +241,14 @@ export async function handleMessage(cofre, message, token) {
     const answer = interpreted.intent === "summary"
       ? interpreted.reply || formatSituationMessage(cofre.snapshot().situation)
       : interpreted.reply || HELP;
-    await replyTo(token, chatId, answer);
+    await replyTo(cofre, token, chatId, answer);
     return;
   }
 
   const result = interpreted
     ? launchParsed(cofre, interpreted, { note: caption || interpreted.note, rawText: text })
     : launchText(cofre, text, { note: caption || undefined, rawText: text });
-  await replyTo(token, chatId, result.ok ? result.reply : result.error);
+  await replyTo(cofre, token, chatId, result.ok ? result.reply : result.error);
 }
 
 async function getUpdates(token, offset) {
@@ -282,7 +285,7 @@ async function poll(cofre, token) {
         } catch (error) {
           console.error(`Telegram: ${error.message}`);
           try {
-            await replyTo(token, String(message.chat.id), "Não consegui lançar esta mensagem. Tenta de novo com o valor escrito, por exemplo: 42,90 almoço.");
+            await replyTo(cofre, token, String(message.chat.id), "Não consegui lançar esta mensagem. Tenta de novo com o valor escrito, por exemplo: 42,90 almoço.");
           } catch {
             // a resposta pode falhar se o token estiver inválido
           }

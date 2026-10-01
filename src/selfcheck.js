@@ -65,6 +65,10 @@ try {
 
   cofre.reset();
   assert(!cofre.isDemo() && cofre.isEmpty(), "reset limpa");
+  cofre.addConversationMessage("123", "user", "qual foi meu último gasto?");
+  cofre.addConversationMessage("123", "assistant", "Ainda não há gastos.");
+  const history = cofre.conversationHistory("123");
+  assert(history.length === 2 && history[0].role === "user" && history[1].role === "assistant", "histórico do Telegram");
   const cardId = cofre.addCard({ name: "Nubank", limit: "1000", closeDay: 3, dueDay: 10 });
   cofre.setBudget("alimentacao", "100");
   cofre.setBudget("energia", "350");

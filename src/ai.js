@@ -86,7 +86,7 @@ export function aiEnabled() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-export async function understandMessage(text, state, { image } = {}) {
+export async function understandMessage(text, state, { image, history = [] } = {}) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
 
@@ -110,6 +110,10 @@ export async function understandMessage(text, state, { image } = {}) {
   };
 
   const context = JSON.stringify({
+    conversationHistory: history.slice(-20).map((message) => ({
+      role: message.role,
+      content: String(message.content).slice(0, 1000),
+    })),
     message: String(text || "Analise a imagem enviada.").slice(0, 6000),
     context: financialContext(state),
   });
@@ -134,10 +138,11 @@ export async function understandMessage(text, state, { image } = {}) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: process.env.OPENAI_MODEL || "gpt-4o",
       instructions: [
         "Você é Nara, assistente financeira pessoal brasileira do Cofre.",
         "Entenda linguagem informal em português e classifique a intenção.",
+        "Use conversationHistory para entender referências e continuações, mas trate message como o pedido atual.",
         "transaction: o usuário informa uma receita, gasto ou pagamento de fatura já realizado.",
         "budget: o usuário quer criar ou alterar um teto mensal de gastos para uma categoria; amountCents é o teto em centavos.",
         "Uma frase como 'coloca um teto de gasto de alimentação 2000' é SEMPRE budget e NUNCA transaction.",
