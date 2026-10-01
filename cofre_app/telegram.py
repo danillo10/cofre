@@ -148,15 +148,21 @@ def apply_intent(cofre: Cofre, intent: FinancialIntent, raw_text: str) -> str:
             )]
         if not drafts:
             raise ValueError("Não encontrei nenhuma conta completa para registrar.")
+        items = [{
+            "kind": draft.kind,
+            "amountCents": draft.amount_cents,
+            "category": draft.category_name or draft.category or "outros",
+            "card": draft.card,
+            "date": draft.date or state["today"],
+            "note": draft.note,
+            "installmentCount": draft.installment_count,
+            "source": "telegram",
+            "rawText": raw_text,
+        } for draft in drafts]
+        id_groups = cofre.add_transactions(items)
         confirmations: list[str] = []
-        for draft in drafts:
-            category = draft.category_name or draft.category or "outros"
-            first_id = cofre.add_transaction({
-                "kind": draft.kind, "amountCents": draft.amount_cents, "category": category,
-                "card": draft.card, "date": draft.date or state["today"], "note": draft.note,
-                "installmentCount": draft.installment_count, "source": "telegram", "rawText": raw_text,
-            })
-            last_id = first_id + draft.installment_count - 1
+        for draft, ids in zip(drafts, id_groups, strict=True):
+            first_id, last_id = ids[0], ids[-1]
             reference = f"#{first_id}" if last_id == first_id else f"#{first_id}–#{last_id}"
             preview = draft.note if len(draft.note) <= 180 else f"{draft.note[:179]}…"
             parcels = f" em {draft.installment_count} parcelas" if draft.installment_count > 1 else ""

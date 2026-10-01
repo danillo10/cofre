@@ -169,6 +169,12 @@ class Cofre:
     def set_budget(self, category: str, limit: Any) -> None:
         key = normalize_category(category)
         with self.database.connect() as connection:
+            if key not in dict(EXPENSE_CATEGORIES):
+                label = " ".join(str(category).split()).strip().title()
+                connection.execute(
+                    "INSERT OR IGNORE INTO custom_categories(key,label) VALUES(?,?)",
+                    (key, label),
+                )
             connection.execute(
                 "INSERT INTO budgets(category,limit_cents) VALUES(?,?) ON CONFLICT(category) DO UPDATE SET limit_cents=excluded.limit_cents",
                 (key, to_cents(limit)),
@@ -183,14 +189,17 @@ class Cofre:
             return "pagamento_cartao"
         key = normalize_category(category)
         allowed = dict(INCOME_CATEGORIES if kind == "income" else EXPENSE_CATEGORIES)
-        if key not in allowed and not (
-            kind == "expense"
-            and connection.execute("SELECT 1 FROM budgets WHERE category=?", (key,)).fetchone()
-        ):
+        if key not in allowed and kind == "expense":
+            label = " ".join(str(category).split()).strip().title()
+            connection.execute(
+                "INSERT OR IGNORE INTO custom_categories(key,label) VALUES(?,?)",
+                (key, label),
+            )
+        elif key not in allowed:
             raise ValueError("Categoria inválida")
         return key
 
-    def add_transaction(self, data: dict[str, Any]) -> int:
+    def _add_transaction(self, connection: Any, data: dict[str, Any]) -> list[int]:
         kind = data.get("kind")
         if kind not in {"expense", "income", "card_payment"}:
             raise ValueError("Tipo de lançamento inválido")
@@ -201,36 +210,44 @@ class Cofre:
         today = local_today()
         occurred = valid_date(data.get("date") or today)
         ids: list[int] = []
+        category = self._resolve_category(connection, kind, data.get("category"))
+        card = None if kind == "income" else self._card(connection, data.get("card"))
+        if kind == "card_payment" and not card:
+            raise ValueError("Pagamento precisa de um cartão")
+        if kind == "card_payment" and cents > card["balance_cents"]:
+            raise ValueError("O pagamento é maior do que a fatura em aberto")
+        base, remainder = divmod(cents, count)
+        for index in range(count):
+            amount = base + (1 if index < remainder else 0)
+            note = str(data.get("note") or "").strip()
+            if count > 1:
+                note = f"{note or 'Compra'} · parcela {index + 1}/{count}"
+            cursor = connection.execute(
+                """INSERT INTO transactions
+                   (occurred_on,logged_on,amount_cents,kind,category,card_id,note,created_at,source,raw_text)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    add_months(occurred, index), today.isoformat(), amount, kind, category,
+                    card["id"] if card else None, note, datetime.now(timezone.utc).isoformat(),
+                    data.get("source", "painel") if data.get("source") in {"painel", "telegram", "demo"} else "painel",
+                    str(data.get("rawText") or ""),
+                ),
+            )
+            ids.append(int(cursor.lastrowid))
+        if card and kind == "expense":
+            connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (cents, card["id"]))
+        elif card and kind == "card_payment":
+            connection.execute("UPDATE cards SET balance_cents=balance_cents-? WHERE id=?", (cents, card["id"]))
+        return ids
+
+    def add_transactions(self, items: list[dict[str, Any]]) -> list[list[int]]:
+        if not items:
+            raise ValueError("Nenhuma conta para registrar")
         with self.database.transaction() as connection:
-            category = self._resolve_category(connection, kind, data.get("category"))
-            card = None if kind == "income" else self._card(connection, data.get("card"))
-            if kind == "card_payment" and not card:
-                raise ValueError("Pagamento precisa de um cartão")
-            if kind == "card_payment" and cents > card["balance_cents"]:
-                raise ValueError("O pagamento é maior do que a fatura em aberto")
-            base, remainder = divmod(cents, count)
-            for index in range(count):
-                amount = base + (1 if index < remainder else 0)
-                note = str(data.get("note") or "").strip()
-                if count > 1:
-                    note = f"{note or 'Compra'} · parcela {index + 1}/{count}"
-                cursor = connection.execute(
-                    """INSERT INTO transactions
-                       (occurred_on,logged_on,amount_cents,kind,category,card_id,note,created_at,source,raw_text)
-                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        add_months(occurred, index), today.isoformat(), amount, kind, category,
-                        card["id"] if card else None, note, datetime.now(timezone.utc).isoformat(),
-                        data.get("source", "painel") if data.get("source") in {"painel", "telegram", "demo"} else "painel",
-                        str(data.get("rawText") or ""),
-                    ),
-                )
-                ids.append(int(cursor.lastrowid))
-            if card and kind == "expense":
-                connection.execute("UPDATE cards SET balance_cents=balance_cents+? WHERE id=?", (cents, card["id"]))
-            elif card and kind == "card_payment":
-                connection.execute("UPDATE cards SET balance_cents=balance_cents-? WHERE id=?", (cents, card["id"]))
-        return ids[0]
+            return [self._add_transaction(connection, item) for item in items]
+
+    def add_transaction(self, data: dict[str, Any]) -> int:
+        return self.add_transactions([data])[0][0]
 
     def update_transaction(self, transaction_id: int, data: dict[str, Any]) -> None:
         with self.database.transaction() as connection:
@@ -277,6 +294,10 @@ class Cofre:
         with self.database.connect() as connection:
             cards_raw = [dict(row) for row in connection.execute("SELECT * FROM cards ORDER BY name COLLATE NOCASE")]
             budgets_raw = [dict(row) for row in connection.execute("SELECT * FROM budgets ORDER BY category")]
+            custom_labels = {
+                row["key"]: row["label"]
+                for row in connection.execute("SELECT key,label FROM custom_categories ORDER BY label COLLATE NOCASE")
+            }
             rows = [dict(row) for row in connection.execute("SELECT * FROM transactions ORDER BY occurred_on DESC,id DESC")]
         month_rows = [row for row in rows if start.isoformat() <= row["occurred_on"] <= end.isoformat()]
         spent: dict[str, int] = {}
@@ -299,7 +320,7 @@ class Cofre:
                 "ratio": card["balance_cents"] / card["limit_cents"] if card["limit_cents"] else 0,
             })
         budgets = [{
-            "category": item["category"], "label": category_label("expense", item["category"]),
+            "category": item["category"], "label": custom_labels.get(item["category"], category_label("expense", item["category"])),
             "limitCents": item["limit_cents"], "spentCents": spent.get(item["category"], 0),
             "ratio": spent.get(item["category"], 0) / item["limit_cents"] if item["limit_cents"] else 0,
         } for item in budgets_raw]
@@ -307,7 +328,7 @@ class Cofre:
         recent = [{
             "id": row["id"], "occurredOn": row["occurred_on"], "amountCents": row["amount_cents"],
             "kind": row["kind"], "category": row["category"],
-            "categoryLabel": "Pagamento" if row["kind"] == "card_payment" else category_label(row["kind"], row["category"]),
+            "categoryLabel": "Pagamento" if row["kind"] == "card_payment" else custom_labels.get(row["category"], category_label(row["kind"], row["category"])),
             "cardId": row["card_id"], "cardName": next((c["name"] for c in cards if c["id"] == row["card_id"]), None),
             "note": row["note"], "source": row["source"] or "painel",
         } for row in rows[:40]]
@@ -332,7 +353,10 @@ class Cofre:
             {"id": "vigia", "name": "Vigia", "role": "Crédito", "focus": "Limite, fatura e vencimento", "line": "Crédito acompanhado." if cards else "Sem cartão cadastrado.", "tone": "ok"},
             {"id": "luma", "name": "Luma", "role": "Coach", "focus": "XP, selos e desafios", "line": f'Situação {situation["headline"].lower()}. Nível {current[0]}, {current[2]}.', "tone": "ok"},
         ]
-        custom = [(item["category"], item["label"]) for item in budgets if item["category"] not in dict(EXPENSE_CATEGORIES)]
+        for item in budgets:
+            if item["category"] not in dict(EXPENSE_CATEGORIES):
+                custom_labels.setdefault(item["category"], item["label"])
+        custom = [(key, label) for key, label in custom_labels.items() if key not in dict(EXPENSE_CATEGORIES)]
         return {
             "today": today.isoformat(), "month": today.strftime("%Y-%m"), "demo": self.setting("demo") == "1",
             "cashCents": cash, "monthIncomeCents": income, "monthExpenseCents": expense,

@@ -64,7 +64,7 @@ class EngineTest(unittest.TestCase):
                     note="Compra de alimentos no Mercado Central",
                 ),
                 TransactionDraft(
-                    kind="expense", amount_cents=3500, category="outros",
+                    kind="expense", amount_cents=3500, category_name="Produtos de Limpeza",
                     note="Produto de limpeza na Loja da Esquina",
                 ),
             ],
@@ -78,6 +78,21 @@ class EngineTest(unittest.TestCase):
         )
         self.assertIn("Nara registrou:", reply)
         self.assertTrue(any(alert["pending"] for alert in state["alerts"]))
+        self.assertTrue(any(item["id"] == "produtos_de_limpeza" for item in state["categories"]["expense"]))
+
+    def test_account_lists_are_atomic(self) -> None:
+        with self.assertRaises(ValueError):
+            self.cofre.add_transactions([
+                {
+                    "kind": "expense", "amount": "10", "category": "Energia Elétrica",
+                    "note": "Conta válida",
+                },
+                {
+                    "kind": "expense", "amount": "20", "category": "Água",
+                    "date": "data inválida", "note": "Conta inválida",
+                },
+            ])
+        self.assertEqual(self.cofre.snapshot()["transactions"], [])
 
 
 class ApiTest(unittest.TestCase):

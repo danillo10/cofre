@@ -60,6 +60,7 @@ def understand(
         "today": state["today"],
         "cards": [{"name": c["name"], "balanceCents": c["balanceCents"]} for c in state["cards"]],
         "budgets": [{"category": b["category"], "limitCents": b["limitCents"]} for b in state["budgets"]],
+        "categories": state.get("categories", {}),
         "recentTransactions": state["transactions"][:20],
         "history": (history or [])[-20:],
     }
@@ -68,13 +69,20 @@ Você é Nara, assistente financeira pessoal brasileira. Extraia uma ação estr
 transaction registra um ou mais gastos, receitas ou pagamentos já realizados. Para essa intenção,
 preencha transactions com UMA entrada por conta, compra ou linha distinta. Em foto de lista,
 fatura ou extrato, não agrupe valores diferentes e não transforme a quantidade de linhas em
-parcelas. Ignore linhas negativas somente quando o usuário pedir. Compra no cartão é expense;
+parcelas. Percorra o texto e a imagem inteiros: toda linha visível que tenha descrição e valor
+deve aparecer em transactions; nunca devolva apenas a primeira conta de uma lista. Ignore linhas
+negativas somente quando o usuário pedir. Compra no cartão é expense;
 card_payment é somente pagamento de fatura. amount_cents é inteiro em centavos.
+Use category com o id de uma categoria disponível quando ela combinar com a conta. Se nenhuma
+categoria disponível servir, preencha category_name com um nome específico para ela ser criada;
+não deixe ambos vazios quando a finalidade da conta estiver clara.
 edit_transaction e delete_transaction exigem um transaction_id existente no contexto.
 budget cria ou altera teto; delete_budget exclui teto. Preserve categorias personalizadas em
 category_name. Em foto leia TOTAL, data, estabelecimento e parcelas; não some itens quando
 o documento for um único cupom. installment_count é maior que 1 somente se a própria conta
 indicar parcelamento (como 4x ou parcela 1/4). Não invente valor, cartão ou id.
+Em compra parcelada, amount_cents é o valor TOTAL da compra. Se o documento informar somente
+o valor de cada parcela e a quantidade, calcule o total multiplicando os dois.
 Cada transação deve ter note específico e completo com produto, loja ou finalidade; nunca copie
 uma instrução genérica como "lance esses gastos" para note. Para ação incompleta use unknown e faça uma
 pergunta curta em reply. Responda em português.

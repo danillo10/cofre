@@ -60,6 +60,9 @@ class Database:
                 CREATE TABLE IF NOT EXISTS budgets (
                   category TEXT PRIMARY KEY, limit_cents INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS custom_categories (
+                  key TEXT PRIMARY KEY, label TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS transactions (
                   id INTEGER PRIMARY KEY,
                   occurred_on TEXT NOT NULL,
