@@ -69,6 +69,18 @@ try {
   cofre.addConversationMessage("123", "assistant", "Ainda não há gastos.");
   const history = cofre.conversationHistory("123");
   assert(history.length === 2 && history[0].role === "user" && history[1].role === "assistant", "histórico do Telegram");
+  const longDescription = "descrição detalhada ".repeat(400);
+  const longId = cofre.addTransaction({
+    kind: "income",
+    amount: "1",
+    category: "outros",
+    note: longDescription,
+  });
+  assert(
+    cofre.snapshot().transactions.find((row) => row.id === longId).note.length > 160,
+    "descrição sem limite artificial",
+  );
+  cofre.deleteTransaction(longId);
   const cardId = cofre.addCard({ name: "Nubank", limit: "1000", closeDay: 3, dueDay: 10 });
   cofre.setBudget("alimentacao", "100");
   cofre.setBudget("energia", "350");

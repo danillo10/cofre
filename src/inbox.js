@@ -81,8 +81,13 @@ function splitInstallments(parsed) {
   return Array.from({ length: count }, (_, index) => ({
     amountCents: base + (index < remainder ? 1 : 0),
     date: firstDate ? addMonths(firstDate, index) : undefined,
-    note: count > 1 ? `${label} · parcela ${index + 1}/${count}`.slice(0, 160) : label,
+    note: count > 1 ? `${label} · parcela ${index + 1}/${count}` : label,
   }));
+}
+
+function shortDescription(value, max = 240) {
+  const text = String(value || "").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function formatLaunchReply(parsed, state, installments, ids) {
@@ -91,7 +96,7 @@ function formatLaunchReply(parsed, state, installments, ids) {
     : categoryLabel(parsed.kind, parsed.category);
   const where = parsed.card ? ` no ${parsed.card}` : "";
   const reference = ids.length > 1 ? `#${ids[0]}–#${ids.at(-1)}` : `#${ids[0]}`;
-  const description = installments[0]?.note ? ` — ${installments[0].note}` : "";
+  const description = installments[0]?.note ? ` — ${shortDescription(installments[0].note)}` : "";
   const launch = installments.length > 1
     ? `Nara registrou ${reference}: ${installments.length} parcelas de ${formatBRL(parsed.amountCents)} no total em ${label}${where}${description}.`
     : `Nara lançou ${reference}: ${formatBRL(parsed.amountCents)} em ${label}${where}${description}.`;
@@ -123,7 +128,7 @@ function formatRecentTransactions(state) {
   return [
     "Últimas contas",
     ...state.transactions.slice(0, 10).map((row) =>
-      `#${row.id} · ${row.note || row.categoryLabel} · ${formatBRL(row.amountCents)} · ${row.occurredOn}`,
+      `#${row.id} · ${shortDescription(row.note || row.categoryLabel, 120)} · ${formatBRL(row.amountCents)} · ${row.occurredOn}`,
     ),
     "",
     "Para corrigir: edite a conta #12 para 80 reais.",
@@ -157,7 +162,7 @@ async function applyTransactionMutation(cofre, token, chatId, command) {
       cofre,
       token,
       chatId,
-      `Conta #${before.id} excluída: ${before.note || before.categoryLabel}, ${formatBRL(before.amountCents)}.`,
+      `Conta #${before.id} excluída: ${shortDescription(before.note || before.categoryLabel)}, ${formatBRL(before.amountCents)}.`,
     );
     return;
   }
@@ -174,7 +179,7 @@ async function applyTransactionMutation(cofre, token, chatId, command) {
       cofre,
       token,
       chatId,
-      `Conta #${updated.id} atualizada: ${updated.note || updated.categoryLabel}, ${formatBRL(updated.amountCents)} em ${updated.categoryLabel}.`,
+      `Conta #${updated.id} atualizada: ${shortDescription(updated.note || updated.categoryLabel)}, ${formatBRL(updated.amountCents)} em ${updated.categoryLabel}.`,
     );
   } catch (error) {
     await replyTo(cofre, token, chatId, error.message);
@@ -296,10 +301,22 @@ export async function handleMessage(cofre, message, token) {
   }
 
   let interpreted = null;
+  let aiError = null;
   try {
     interpreted = await understandMessage(text, cofre.snapshot(), { image, history });
+    if (interpreted) console.log(`Telegram IA: ${interpreted.intent}`);
   } catch (error) {
+    aiError = error;
     console.error(`Telegram IA: ${error.message}`);
+  }
+  if (image && !interpreted && aiError) {
+    await replyTo(
+      cofre,
+      token,
+      chatId,
+      "A IA de imagens está indisponível e eu não registrei a conta para evitar um lançamento errado. Tente novamente depois ou envie valor, descrição e parcelas em texto.",
+    );
+    return;
   }
 
   if (interpreted?.intent === "budget") {
@@ -321,7 +338,7 @@ export async function handleMessage(cofre, message, token) {
   }
 
   const result = interpreted
-    ? launchParsed(cofre, interpreted, { note: caption || interpreted.note, rawText: text })
+    ? launchParsed(cofre, interpreted, { note: interpreted.note || caption, rawText: text })
     : launchText(cofre, text, { note: caption || undefined, rawText: text });
   await replyTo(cofre, token, chatId, result.ok ? result.reply : result.error);
 }

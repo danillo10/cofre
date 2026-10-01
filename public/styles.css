@@ -24,7 +24,7 @@ body {
     linear-gradient(180deg, #18150f 0%, var(--bg) 280px);
   color: var(--ink);
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button, summary { cursor: pointer; }
 h1, h2, h3, .money, .level strong { font-family: Fraunces, Georgia, serif; font-weight: 560; }
 h1 { margin: 0; font-size: 3rem; letter-spacing: -0.04em; }
@@ -139,13 +139,14 @@ form { display: grid; gap: 10px; }
 .move-form { grid-template-columns: 1fr 1fr; }
 .move-form .wide, .move-form button { grid-column: 1 / -1; }
 label { display: grid; gap: 6px; color: var(--muted); font-size: 0.92rem; }
-input, select {
+input, select, textarea {
   width: 100%;
   border: 1px solid var(--line);
   background: #14120e;
   border-radius: 12px;
   padding: 10px 12px;
 }
+textarea { resize: vertical; }
 button {
   border: 0;
   border-radius: 12px;

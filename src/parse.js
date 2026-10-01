@@ -189,6 +189,6 @@ export function parseLaunch(text, { cards = [], categories = [] } = {}) {
     amountCents: pickAmount(raw, amounts).cents,
     category,
     card,
-    note: firstLine.slice(0, 160),
+    note: firstLine,
   };
 }

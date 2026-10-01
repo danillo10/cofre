@@ -50,7 +50,7 @@ function fallbackDescription(text) {
     .filter(Boolean);
   return (lines.find((line) =>
     !/^(total|subtotal|cnpj|cpf|data|valor|r\$|\d[\d\s.,/-]*)$/i.test(line),
-  ) || lines[0] || "Conta registrada").slice(0, 160);
+  ) || lines[0] || "Conta registrada");
 }
 
 function validate(result, state, sourceText) {
@@ -66,7 +66,7 @@ function validate(result, state, sourceText) {
         throw new Error("Novo valor inválido");
       }
       if (result.categoryName) result.category = normalizeCategory(result.categoryName);
-      if (result.note !== null) result.note = String(result.note).trim().slice(0, 160);
+      if (result.note !== null) result.note = String(result.note).trim();
     }
     return result;
   }
@@ -102,7 +102,7 @@ function validate(result, state, sourceText) {
     result.card = card?.name ?? null;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date ?? "")) result.date = state.today;
-  result.note = String(result.note || fallbackDescription(sourceText)).trim().slice(0, 160);
+  result.note = String(result.note || fallbackDescription(sourceText)).trim();
   return result;
 }
 

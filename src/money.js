@@ -167,9 +167,7 @@ export function assertDayOfMonth(value, label) {
 }
 
 export function cleanNote(value) {
-  const note = String(value ?? "").trim().replace(/\s+/g, " ");
-  if (note.length > 160) throw new Error("A nota passou de 160 caracteres");
-  return note;
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 export function cleanName(value) {
