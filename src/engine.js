@@ -310,6 +310,19 @@ export class Cofre {
     this.db.prepare("DELETE FROM budgets WHERE category = ?").run(id);
   }
 
+  resolveCategory(kind, category) {
+    if (kind === "card_payment") return "pagamento_cartao";
+    const normalized = normalizeCategory(category);
+    try {
+      return assertCategory(kind, normalized);
+    } catch (error) {
+      const custom = kind === "expense" &&
+        this.db.prepare("SELECT 1 FROM budgets WHERE category = ?").get(normalized);
+      if (!custom) throw error;
+      return normalized;
+    }
+  }
+
   addTransaction({ kind, amount, amountCents, category, card, note, date, loggedOn, source = "painel", rawText = "" }) {
     if (!["expense", "income", "card_payment"].includes(kind)) {
       throw new Error("Tipo de lançamento inválido");
@@ -323,18 +336,7 @@ export class Cofre {
     const occurredOn = assertIsoDate(date || this.today());
     const logged = assertIsoDate(loggedOn || this.today());
     const safeNote = cleanNote(note);
-    let categoryId = "pagamento_cartao";
-    if (kind !== "card_payment") {
-      const normalized = normalizeCategory(category);
-      try {
-        categoryId = assertCategory(kind, normalized);
-      } catch (error) {
-        const custom = kind === "expense" &&
-          this.db.prepare("SELECT 1 FROM budgets WHERE category = ?").get(normalized);
-        if (!custom) throw error;
-        categoryId = normalized;
-      }
-    }
+    const categoryId = this.resolveCategory(kind, category);
     const cardRow = kind === "income" ? null : this.findCard(card);
     if (kind === "card_payment" && !cardRow) {
       throw new Error("Pagamento precisa de um cartão");
@@ -373,6 +375,62 @@ export class Cofre {
       }
       return Number(result.lastInsertRowid);
     });
+  }
+
+  updateTransaction(id, changes = {}) {
+    const row = this.db.prepare("SELECT * FROM transactions WHERE id = ?").get(Number(id));
+    if (!row) throw new Error("Lançamento não encontrado");
+    const kind = changes.kind ?? row.kind;
+    if (!["expense", "income", "card_payment"].includes(kind)) {
+      throw new Error("Tipo de lançamento inválido");
+    }
+    const cents = changes.amountCents ??
+      (changes.amount !== undefined ? toCents(changes.amount) : row.amount_cents);
+    if (!Number.isInteger(cents) || cents <= 0 || cents > 100_000_000) {
+      throw new Error("Valor inválido");
+    }
+    const category = changes.category ?? row.category;
+    const categoryId = this.resolveCategory(kind, category);
+    const cardInput = changes.card !== undefined ? changes.card : row.card_id;
+    const cardRow = kind === "income" ? null : this.findCard(cardInput);
+    if (kind === "card_payment" && !cardRow) {
+      throw new Error("Pagamento precisa de um cartão");
+    }
+    if (kind === "card_payment") {
+      let balanceAfterReverse = cardRow.balance_cents;
+      if (row.card_id === cardRow.id && row.kind === "expense") balanceAfterReverse -= row.amount_cents;
+      if (row.card_id === cardRow.id && row.kind === "card_payment") balanceAfterReverse += row.amount_cents;
+      if (cents > balanceAfterReverse) throw new Error("O pagamento é maior do que a fatura em aberto");
+    }
+    const occurredOn = assertIsoDate(changes.date ?? row.occurred_on);
+    const safeNote = cleanNote(changes.note ?? row.note);
+
+    this.withTransaction(() => {
+      if (row.card_id && row.kind === "expense") {
+        this.db.prepare("UPDATE cards SET balance_cents = MAX(0, balance_cents - ?) WHERE id = ?")
+          .run(row.amount_cents, row.card_id);
+      }
+      if (row.card_id && row.kind === "card_payment") {
+        this.db.prepare("UPDATE cards SET balance_cents = balance_cents + ? WHERE id = ?")
+          .run(row.amount_cents, row.card_id);
+      }
+      this.db
+        .prepare(`
+          UPDATE transactions
+          SET occurred_on = ?, amount_cents = ?, kind = ?, category = ?, card_id = ?, note = ?
+          WHERE id = ?
+        `)
+        .run(occurredOn, cents, kind, categoryId, cardRow?.id ?? null, safeNote, row.id);
+      if (cardRow && kind === "expense") {
+        this.db.prepare("UPDATE cards SET balance_cents = balance_cents + ? WHERE id = ?")
+          .run(cents, cardRow.id);
+      }
+      if (cardRow && kind === "card_payment") {
+        this.db.prepare("UPDATE cards SET balance_cents = balance_cents - ? WHERE id = ?")
+          .run(cents, cardRow.id);
+      }
+    });
+    return row.id;
   }
 
   deleteTransaction(id) {

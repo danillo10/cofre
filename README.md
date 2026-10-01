@@ -39,11 +39,15 @@ Com o token e `OPENAI_API_KEY` ativos, o Cofre usa `gpt-4o`, entende linguagem n
 - `ontem eu gastei quarenta reais no almoço`
 - `defina um teto mensal de 700 para mercado`
 - `como está minha situação este mês?`
+- `edite a conta #12 para 80 reais, descrição internet`
+- `exclua a última conta`
 - `recebi 5200 de salário`
 - `paguei 200 no Nubank`
 - foto do cupom, de preferência com a palavra TOTAL visível; se a leitura falhar, escreva o valor na legenda
 
 A Nara confirma cada teto criado ou alterado. Se a categoria ainda não existir, ela é criada com o nome pedido, como `Energia` ou `Pet`. Depois de cada gasto, a resposta mostra quanto da categoria já foi usado e quanto ainda cabe. Ela também responde com a situação (sob controle, apertando, piorando ou fora de controle). O painel em http://127.0.0.1:8787 atualiza sozinho.
+
+Todo lançamento guarda uma descrição e recebe um número, como `#12`. Use `/contas` no Telegram para listar os últimos números e pedir uma correção ou exclusão.
 
 A foto é enviada à visão da IA junto com o texto extraído pelo Tesseract. Ela identifica total, data, categoria e parcelamento. Uma compra parcelada gera um lançamento por mês, numerado como `parcela 1/N`, preservando o valor total. Sem IA ou OCR, a legenda da foto ainda vale.
 

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Cofre } from "./engine.js";
 import { launchParsed, launchText } from "./inbox.js";
-import { parseBudgetRequest, parseLaunch } from "./parse.js";
+import { parseBudgetRequest, parseLaunch, parseTransactionMutation } from "./parse.js";
 import { daysBetween, formatBRL, nextDueDate, toCents } from "./money.js";
 
 const dbPath = path.join(os.tmpdir(), `cofre-check-${process.pid}.sqlite`);
@@ -79,6 +79,17 @@ try {
   assert(mid.categories.expense.some((category) => category.id === "energia"), "categoria personalizada disponível");
   const energyLaunch = launchText(cofre, "gastei 25 reais de energia");
   assert(energyLaunch.ok && energyLaunch.parsed.category === "energia", "lançamento usa categoria personalizada");
+  const energyId = energyLaunch.ids[0];
+  const edit = parseTransactionMutation(`edite a conta #${energyId} para 30 reais descrição conta de energia`, energyLaunch.state.transactions);
+  assert(edit.intent === "edit_transaction" && edit.changes.amountCents === 3000, "entende edição pelo Telegram");
+  cofre.updateTransaction(edit.transactionId, edit.changes);
+  let edited = cofre.snapshot().transactions.find((row) => row.id === energyId);
+  assert(edited.amountCents === 3000 && edited.note === "conta de energia", "edita valor e descrição");
+  const deletion = parseTransactionMutation("exclua a última conta", cofre.snapshot().transactions);
+  assert(deletion.intent === "delete_transaction" && deletion.transactionId === energyId, "entende exclusão pelo Telegram");
+  cofre.deleteTransaction(deletion.transactionId);
+  edited = cofre.snapshot().transactions.find((row) => row.id === energyId);
+  assert(!edited, "exclui conta pelo identificador");
   assert(mid.alerts.some((alert) => alert.level === "atencao"), "80% avisa");
   assert(mid.alerts.filter((alert) => alert.pending).length > 0, "alerta real fica pendente");
   cofre.addTransaction({ kind: "expense", amount: 30, category: "alimentacao", card: "Nubank" });

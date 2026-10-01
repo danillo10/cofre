@@ -102,11 +102,57 @@ export function parseBudgetRequest(text) {
   };
 }
 
+export function parseTransactionMutation(text, transactions = []) {
+  const raw = String(text ?? "").trim();
+  const folded = fold(raw);
+  const deleting = /\b(apaga|apague|exclui|exclua|remove|remova|delete)\b/.test(folded);
+  const editing = /\b(edita|edite|corrige|corrija|altera|altere|muda|mude)\b/.test(folded);
+  if (!deleting && !editing) return null;
+
+  let target = null;
+  const explicitId = raw.match(/#(\d+)|\bid\s*[:#]?\s*(\d+)/i);
+  if (explicitId) {
+    const id = Number(explicitId[1] || explicitId[2]);
+    target = transactions.find((row) => row.id === id) ?? null;
+  } else if (/\b(ultima|ultimo|essa|esse)\b/.test(folded)) {
+    target = transactions.slice().sort((a, b) => b.id - a.id)[0] ?? null;
+  } else {
+    const matches = transactions.filter((row) => {
+      const labels = [row.category, row.categoryLabel, row.note]
+        .map(fold)
+        .filter((value) => value.length >= 3);
+      return labels.some((value) => folded.includes(value));
+    });
+    if (matches.length === 1) target = matches[0];
+    else if (matches.length > 1) {
+      return { error: "Encontrei mais de uma conta parecida. Diga o número, por exemplo: exclua a conta #12." };
+    }
+  }
+  if (!target) {
+    return { error: "Não encontrei essa conta. Diga o número mostrado pelo bot, por exemplo: edite a conta #12." };
+  }
+  if (deleting) return { intent: "delete_transaction", transactionId: target.id };
+
+  const changes = {};
+  const amount = raw.match(/\b(?:valor(?:\s+para)?|para)\s*(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+[.,]\d{1,2}|\d+)\b/i);
+  if (amount) changes.amountCents = toCents(amount[1]);
+  const date = raw.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  if (date) changes.date = date[1];
+  const category = raw.match(/\bcategoria\s+(?:para\s+|como\s+)?([\p{L}][\p{L}\s_-]*?)(?=\s+(?:e|valor|descricao|data)\b|$)/iu);
+  if (category) changes.category = normalizeCategory(category[1]);
+  const note = raw.match(/\b(?:descricao|descrição|nome|referencia|referência)\s*(?:para|como|:)?\s+(.+)$/iu);
+  if (note) changes.note = note[1].trim();
+  if (Object.keys(changes).length === 0) {
+    return { error: "Diga o que devo corrigir: valor, descrição, data ou categoria." };
+  }
+  return { intent: "edit_transaction", transactionId: target.id, changes };
+}
+
 export function parseLaunch(text, { cards = [], categories = [] } = {}) {
   const raw = String(text ?? "").trim();
   if (!raw) return null;
   const folded = fold(raw);
-  const command = folded.match(/^(\/start|\/resumo)$/);
+  const command = folded.match(/^(\/start|\/resumo|\/contas)$/);
   if (command) return { command: command[1].replace("/", "") };
 
   const amounts = extractAmounts(raw);

@@ -33,6 +33,7 @@ function financialContext(state) {
       limitCents: budget.limitCents,
     })),
     recentTransactions: state.transactions.slice(0, 10).map((row) => ({
+      id: row.id,
       date: row.occurredOn,
       kind: row.kind,
       amountCents: row.amountCents,
@@ -42,9 +43,32 @@ function financialContext(state) {
   };
 }
 
-function validate(result, state) {
-  if (!["transaction", "budget", "summary", "help", "chat", "unknown"].includes(result.intent)) {
+function fallbackDescription(text) {
+  const lines = String(text ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return (lines.find((line) =>
+    !/^(total|subtotal|cnpj|cpf|data|valor|r\$|\d[\d\s.,/-]*)$/i.test(line),
+  ) || lines[0] || "Conta registrada").slice(0, 160);
+}
+
+function validate(result, state, sourceText) {
+  if (!["transaction", "edit_transaction", "delete_transaction", "budget", "summary", "help", "chat", "unknown"].includes(result.intent)) {
     throw new Error("Intenção inválida retornada pela IA");
+  }
+  if (result.intent === "edit_transaction" || result.intent === "delete_transaction") {
+    const transaction = state.transactions.find((row) => row.id === result.transactionId);
+    if (!transaction) throw new Error("Não encontrei a conta que você quer alterar.");
+    if (result.intent === "edit_transaction") {
+      if (result.amountCents !== null &&
+          (!Number.isInteger(result.amountCents) || result.amountCents <= 0 || result.amountCents > 100_000_000)) {
+        throw new Error("Novo valor inválido");
+      }
+      if (result.categoryName) result.category = normalizeCategory(result.categoryName);
+      if (result.note !== null) result.note = String(result.note).trim().slice(0, 160);
+    }
+    return result;
   }
   if (result.intent === "budget") {
     if (!Number.isInteger(result.amountCents) || result.amountCents <= 0 || result.amountCents > 100_000_000) {
@@ -78,7 +102,7 @@ function validate(result, state) {
     result.card = card?.name ?? null;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date ?? "")) result.date = state.today;
-  result.note = String(result.note || "Lançamento pelo Telegram").trim().slice(0, 160);
+  result.note = String(result.note || fallbackDescription(sourceText)).trim().slice(0, 160);
   return result;
 }
 
@@ -95,7 +119,8 @@ export async function understandMessage(text, state, { image, history = [] } = {
     type: "object",
     additionalProperties: false,
     properties: {
-      intent: { type: "string", enum: ["transaction", "budget", "summary", "help", "chat", "unknown"] },
+      intent: { type: "string", enum: ["transaction", "edit_transaction", "delete_transaction", "budget", "summary", "help", "chat", "unknown"] },
+      transactionId: { type: ["integer", "null"] },
       kind: { type: ["string", "null"], enum: [...kinds, null] },
       amountCents: { type: ["integer", "null"] },
       category: { type: ["string", "null"], enum: [...new Set([...availableExpenseIds, ...incomeIds]), null] },
@@ -106,7 +131,7 @@ export async function understandMessage(text, state, { image, history = [] } = {
       installmentCount: { type: ["integer", "null"] },
       reply: { type: ["string", "null"] },
     },
-    required: ["intent", "kind", "amountCents", "category", "categoryName", "card", "date", "note", "installmentCount", "reply"],
+    required: ["intent", "transactionId", "kind", "amountCents", "category", "categoryName", "card", "date", "note", "installmentCount", "reply"],
   };
 
   const context = JSON.stringify({
@@ -144,6 +169,8 @@ export async function understandMessage(text, state, { image, history = [] } = {
         "Entenda linguagem informal em português e classifique a intenção.",
         "Use conversationHistory para entender referências e continuações, mas trate message como o pedido atual.",
         "transaction: o usuário informa uma receita, gasto ou pagamento de fatura já realizado.",
+        "edit_transaction: quer corrigir valor, descrição, data, categoria ou cartão de uma conta existente.",
+        "delete_transaction: quer excluir uma conta existente. Use transactionId da lista recente; nunca adivinhe um id.",
         "budget: o usuário quer criar ou alterar um teto mensal de gastos para uma categoria; amountCents é o teto em centavos.",
         "Uma frase como 'coloca um teto de gasto de alimentação 2000' é SEMPRE budget e NUNCA transaction.",
         "Compra no cartão, inclusive parcelada, é expense. card_payment é somente quando o usuário pagou ou quitou uma fatura já existente.",
@@ -159,6 +186,8 @@ export async function understandMessage(text, state, { image, history = [] } = {
         "Se a compra for parcelada, amountCents é o valor TOTAL da compra e installmentCount é a quantidade de parcelas.",
         "Se não for parcelada, installmentCount é 1. Não confunda '1/10' com data.",
         "Use a data informada; para hoje use a data do contexto. Nunca invente valor, cartão ou transação.",
+        "Em transaction, note deve descrever claramente do que se trata a conta, compra ou receita; nunca use texto genérico.",
+        "Em edit_transaction, preencha somente os campos que mudam e deixe os demais null.",
         "Para transaction, reply deve ser null. Para outras intenções, responda em português, curto e claro.",
       ].join("\n"),
       input,
@@ -180,5 +209,5 @@ export async function understandMessage(text, state, { image, history = [] } = {
   }
   const raw = outputText(body);
   if (!raw) throw new Error("A IA não devolveu uma interpretação");
-  return validate(JSON.parse(raw), state);
+  return validate(JSON.parse(raw), state, text);
 }

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { understandMessage } from "./ai.js";
 import { categoryLabel, formatBRL } from "./money.js";
-import { parseBudgetRequest, parseLaunch } from "./parse.js";
+import { parseBudgetRequest, parseLaunch, parseTransactionMutation } from "./parse.js";
 import { formatSituationMessage } from "./situation.js";
 import { botToken, sendTelegram, telegramConfig } from "./telegram.js";
 
@@ -15,10 +15,13 @@ const HELP = [
   "recebi 5200 de salário",
   "paguei 200 no Nubank",
   "defina um teto de 600 para alimentação",
+  "edite a conta #12 para 80 reais",
+  "exclua a última conta",
   "",
   "Pode escrever naturalmente: a IA entende frases como “ontem gastei quarenta reais no almoço”.",
   "Na foto, a IA lê o total, a data e as parcelas. Se ficar ilegível, escreve o valor na legenda.",
   "/resumo mostra se a situação está sob controle ou piorando.",
+  "/contas lista os últimos lançamentos com seus números.",
 ].join("\n");
 
 export function launchText(cofre, text, { note, rawText } = {}) {
@@ -33,10 +36,12 @@ export function launchText(cofre, text, { note, rawText } = {}) {
 }
 
 export function launchParsed(cofre, parsed, { note, rawText = "" } = {}) {
+  if (note) parsed = { ...parsed, note };
   const installments = splitInstallments(parsed);
+  const ids = [];
   try {
     for (const installment of installments) {
-      cofre.addTransaction({
+      ids.push(cofre.addTransaction({
         kind: parsed.kind,
         amountCents: installment.amountCents,
         category: parsed.category,
@@ -45,13 +50,13 @@ export function launchParsed(cofre, parsed, { note, rawText = "" } = {}) {
         date: installment.date,
         source: "telegram",
         rawText,
-      });
+      }));
     }
   } catch (error) {
     return { ok: false, error: error.message };
   }
   const state = cofre.snapshot();
-  return { ok: true, parsed, reply: formatLaunchReply(parsed, state, installments), state };
+  return { ok: true, parsed, ids, reply: formatLaunchReply(parsed, state, installments, ids), state };
 }
 
 function addMonths(iso, offset) {
@@ -80,14 +85,16 @@ function splitInstallments(parsed) {
   }));
 }
 
-function formatLaunchReply(parsed, state, installments) {
+function formatLaunchReply(parsed, state, installments, ids) {
   const label = parsed.kind === "card_payment"
     ? "Pagamento"
     : categoryLabel(parsed.kind, parsed.category);
   const where = parsed.card ? ` no ${parsed.card}` : "";
+  const reference = ids.length > 1 ? `#${ids[0]}–#${ids.at(-1)}` : `#${ids[0]}`;
+  const description = installments[0]?.note ? ` — ${installments[0].note}` : "";
   const launch = installments.length > 1
-    ? `Nara registrou ${installments.length} parcelas de ${formatBRL(parsed.amountCents)} no total em ${label}${where}.`
-    : `Nara lançou ${formatBRL(parsed.amountCents)} em ${label}${where}.`;
+    ? `Nara registrou ${reference}: ${installments.length} parcelas de ${formatBRL(parsed.amountCents)} no total em ${label}${where}${description}.`
+    : `Nara lançou ${reference}: ${formatBRL(parsed.amountCents)} em ${label}${where}${description}.`;
   const budget = parsed.kind === "expense"
     ? state.budgets.find((item) => item.category === parsed.category)
     : null;
@@ -111,11 +118,64 @@ function formatBudgetReply(state, category) {
   ].join("\n");
 }
 
+function formatRecentTransactions(state) {
+  if (state.transactions.length === 0) return "Ainda não há contas registradas.";
+  return [
+    "Últimas contas",
+    ...state.transactions.slice(0, 10).map((row) =>
+      `#${row.id} · ${row.note || row.categoryLabel} · ${formatBRL(row.amountCents)} · ${row.occurredOn}`,
+    ),
+    "",
+    "Para corrigir: edite a conta #12 para 80 reais.",
+    "Para apagar: exclua a conta #12.",
+  ].join("\n");
+}
+
 async function saveBudgetAndReply(cofre, token, chatId, budget) {
   try {
     cofre.setBudget(budget.category, budget.amountCents / 100);
     const state = cofre.snapshot();
     await replyTo(cofre, token, chatId, formatBudgetReply(state, budget.category));
+  } catch (error) {
+    await replyTo(cofre, token, chatId, error.message);
+  }
+}
+
+async function applyTransactionMutation(cofre, token, chatId, command) {
+  if (command.error) {
+    await replyTo(cofre, token, chatId, command.error);
+    return;
+  }
+  const before = cofre.snapshot().transactions.find((row) => row.id === command.transactionId);
+  if (!before) {
+    await replyTo(cofre, token, chatId, "Não encontrei essa conta.");
+    return;
+  }
+  if (command.intent === "delete_transaction") {
+    cofre.deleteTransaction(command.transactionId);
+    await replyTo(
+      cofre,
+      token,
+      chatId,
+      `Conta #${before.id} excluída: ${before.note || before.categoryLabel}, ${formatBRL(before.amountCents)}.`,
+    );
+    return;
+  }
+
+  const source = command.changes || command;
+  const changes = {};
+  for (const field of ["kind", "amountCents", "category", "card", "date", "note"]) {
+    if (source[field] !== null && source[field] !== undefined) changes[field] = source[field];
+  }
+  try {
+    cofre.updateTransaction(command.transactionId, changes);
+    const updated = cofre.snapshot().transactions.find((row) => row.id === command.transactionId);
+    await replyTo(
+      cofre,
+      token,
+      chatId,
+      `Conta #${updated.id} atualizada: ${updated.note || updated.categoryLabel}, ${formatBRL(updated.amountCents)} em ${updated.categoryLabel}.`,
+    );
   } catch (error) {
     await replyTo(cofre, token, chatId, error.message);
   }
@@ -218,10 +278,20 @@ export async function handleMessage(cofre, message, token) {
     await replyTo(cofre, token, chatId, formatSituationMessage(cofre.snapshot().situation));
     return;
   }
+  if (command === "contas") {
+    await replyTo(cofre, token, chatId, formatRecentTransactions(cofre.snapshot()));
+    return;
+  }
 
   const explicitBudget = parseBudgetRequest(text);
   if (explicitBudget) {
     await saveBudgetAndReply(cofre, token, chatId, explicitBudget);
+    return;
+  }
+
+  const transactionMutation = parseTransactionMutation(text, cofre.snapshot().transactions);
+  if (transactionMutation) {
+    await applyTransactionMutation(cofre, token, chatId, transactionMutation);
     return;
   }
 
@@ -234,6 +304,11 @@ export async function handleMessage(cofre, message, token) {
 
   if (interpreted?.intent === "budget") {
     await saveBudgetAndReply(cofre, token, chatId, interpreted);
+    return;
+  }
+
+  if (interpreted?.intent === "edit_transaction" || interpreted?.intent === "delete_transaction") {
+    await applyTransactionMutation(cofre, token, chatId, interpreted);
     return;
   }
 

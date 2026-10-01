@@ -135,6 +135,12 @@ const server = http.createServer(async (req, res) => {
       replyState(res);
       return;
     }
+    if (req.method === "PATCH" && url.pathname.startsWith("/api/transactions/")) {
+      const body = await readBody(req);
+      cofre.updateTransaction(url.pathname.split("/").pop(), body);
+      replyState(res);
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/cards") {
       const body = await readBody(req);
       cofre.addCard(body);
